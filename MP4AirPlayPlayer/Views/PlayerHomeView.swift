@@ -67,7 +67,6 @@ struct PlayerHomeView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     if viewModel.hasVideo {
                         videoArea
-                        playbackPanel
                     } else {
                         emptyState
                     }
@@ -96,21 +95,6 @@ struct PlayerHomeView: View {
                     .tint(.white)
                     .scaleEffect(1.3)
             }
-
-            VStack {
-                HStack {
-                    Spacer()
-
-                    AirPlayRouteButton()
-                        .frame(width: 44, height: 44)
-                        .padding(6)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
-
-                Spacer()
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
         }
     }
 
@@ -124,17 +108,6 @@ struct PlayerHomeView: View {
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.3)
-            }
-
-            if viewModel.isAirPlayActive {
-                VStack {
-                    HStack {
-                        airPlayBadge
-                        Spacer()
-                    }
-                    Spacer()
-                }
-                .padding(12)
             }
         }
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
@@ -167,39 +140,6 @@ struct PlayerHomeView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity)
-        .nativeCard()
-    }
-
-    private var airPlayBadge: some View {
-        Label("AirPlay", systemImage: "airplayvideo.circle.fill")
-        .font(.caption)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.thinMaterial, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 1)
-        }
-    }
-
-    private var playbackPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                Text(viewModel.title)
-                    .font(.headline)
-                    .lineLimit(1)
-
-                Spacer()
-
-                AirPlayRouteButton()
-                    .frame(width: 44, height: 44)
-            }
-
-            transportControls()
-            .frame(maxWidth: .infinity)
-            .font(.title3)
-        }
-        .padding(14)
         .nativeCard()
     }
 
@@ -237,37 +177,6 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func transportControls(spacing: CGFloat = 22, playWidth: CGFloat = 54, buttonHeight: CGFloat = 42) -> some View {
-        HStack(spacing: spacing) {
-            Button {
-                viewModel.skip(seconds: -10)
-            } label: {
-                Label("10 seconds back", systemImage: "gobackward.10")
-            }
-            .labelStyle(.iconOnly)
-            .frame(width: 42, height: buttonHeight)
-            .buttonStyle(.bordered)
-
-            Button {
-                viewModel.playPause()
-            } label: {
-                Label(viewModel.isPlaying ? "Pause" : "Play", systemImage: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                    .labelStyle(.iconOnly)
-                    .frame(width: playWidth, height: buttonHeight)
-            }
-            .buttonStyle(.borderedProminent)
-
-            Button {
-                viewModel.skip(seconds: 10)
-            } label: {
-                Label("10 seconds forward", systemImage: "goforward.10")
-            }
-            .labelStyle(.iconOnly)
-            .frame(width: 42, height: buttonHeight)
-            .buttonStyle(.bordered)
-        }
-    }
-
     private func handleFileImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
@@ -275,7 +184,7 @@ struct PlayerHomeView: View {
             do {
                 let recent = try recentStore.addOrUpdate(url: url)
                 let storedURL = try recentStore.resolveURL(for: recent)
-                viewModel.open(url: storedURL, displayTitle: recent.title, recentVideoID: recent.id)
+                viewModel.open(url: storedURL, recentVideoID: recent.id)
             } catch {
                 viewModel.setError("The selected file could not be imported for playback. Make sure it is downloaded locally in Files, then try again.")
             }
@@ -290,7 +199,7 @@ struct PlayerHomeView: View {
     private func openRecent(_ video: RecentVideo) {
         do {
             let url = try recentStore.resolveURL(for: video)
-            viewModel.open(url: url, displayTitle: video.title, resumePosition: video.lastPosition, recentVideoID: video.id)
+            viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id)
         } catch {
             viewModel.setError("The recent file is no longer available. Open it again from Files.")
         }
