@@ -54,29 +54,51 @@ struct PlayerHomeView: View {
         ZStack {
             Color.black
 
-            VideoPlayer(player: viewModel.player)
-                .overlay(alignment: .topLeading) {
-                    statusBadge
-                        .padding()
-                }
+            if viewModel.hasVideo {
+                VideoPlayer(player: viewModel.player)
+                    .overlay(alignment: .topLeading) {
+                        statusBadge
+                            .padding()
+                    }
+            } else {
+                emptyVideoState
+            }
 
             if viewModel.isLoading {
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.3)
             }
-
-            if viewModel.title == "No Video" && !viewModel.isLoading {
-                ContentUnavailableView(
-                    "Open an MP4",
-                    systemImage: "play.rectangle",
-                    description: Text("Choose a local video, then send it to Apple TV with AirPlay.")
-                )
-                .foregroundStyle(.white)
-            }
         }
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
         .background(Color.black)
+    }
+
+    private var emptyVideoState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "play.rectangle")
+                .font(.system(size: 42, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            Text("Open an MP4")
+                .font(.headline)
+
+            Text("Choose a local video, then send it to Apple TV with AirPlay.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+
+            Button {
+                isFileImporterPresented = true
+            } label: {
+                Label("Open Video", systemImage: "folder")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .foregroundStyle(.white)
     }
 
     private var statusBadge: some View {
@@ -104,6 +126,7 @@ struct PlayerHomeView: View {
                     Label("10 seconds back", systemImage: "gobackward.10")
                 }
                 .labelStyle(.iconOnly)
+                .disabled(!viewModel.hasVideo)
 
                 Button {
                     viewModel.playPause()
@@ -111,6 +134,7 @@ struct PlayerHomeView: View {
                     Label(viewModel.isPlaying ? "Pause" : "Play", systemImage: viewModel.isPlaying ? "pause.fill" : "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.hasVideo)
 
                 Button {
                     viewModel.skip(seconds: 10)
@@ -118,6 +142,7 @@ struct PlayerHomeView: View {
                     Label("10 seconds forward", systemImage: "goforward.10")
                 }
                 .labelStyle(.iconOnly)
+                .disabled(!viewModel.hasVideo)
 
                 Spacer()
 
@@ -194,4 +219,3 @@ struct PlayerHomeView: View {
     PlayerHomeView()
         .environmentObject(RecentVideoStore())
 }
-

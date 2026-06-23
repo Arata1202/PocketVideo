@@ -7,6 +7,7 @@ import SwiftUI
 final class PlayerViewModel: ObservableObject {
     @Published var player = AVPlayer()
     @Published var title = "No Video"
+    @Published var hasVideo = false
     @Published var isLoading = false
     @Published var isPlaying = false
     @Published var errorMessage: String?
@@ -57,6 +58,7 @@ final class PlayerViewModel: ObservableObject {
         }
 
         title = url.lastPathComponent
+        hasVideo = true
         currentRecentVideoID = recentVideoID
 
         let item = AVPlayerItem(url: url)
@@ -72,6 +74,8 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func playPause() {
+        guard hasVideo else { return }
+
         if isPlaying {
             player.pause()
             isPlaying = false
@@ -82,6 +86,8 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func skip(seconds: Double) {
+        guard hasVideo else { return }
+
         let current = player.currentTime().seconds
         guard current.isFinite else { return }
         let next = max(current + seconds, 0)
