@@ -15,6 +15,8 @@ struct PlayerHomeView: View {
                 controlBar
                 recentList
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(Color(.systemBackground))
             .navigationTitle("MP4 AirPlay")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -186,6 +188,7 @@ struct PlayerHomeView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func handleFileImport(_ result: Result<[URL], Error>) {

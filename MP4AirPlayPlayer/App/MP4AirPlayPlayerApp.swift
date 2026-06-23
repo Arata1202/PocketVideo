@@ -8,7 +8,7 @@ struct MP4AirPlayPlayerApp: App {
         WindowGroup {
             PlayerHomeView()
                 .environmentObject(recentStore)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
-
