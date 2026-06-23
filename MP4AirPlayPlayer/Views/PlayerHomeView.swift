@@ -23,7 +23,7 @@ struct PlayerHomeView: View {
                 }
                 .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
             }
-            .navigationTitle("MP4 AirPlay")
+            .navigationTitle("MP4プレイヤー")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -31,6 +31,7 @@ struct PlayerHomeView: View {
                     } label: {
                         Image(systemName: "folder")
                     }
+                    .accessibilityLabel("動画を選択")
                 }
             }
         }
@@ -40,7 +41,7 @@ struct PlayerHomeView: View {
             allowsMultipleSelection: false,
             onCompletion: handleFileImport
         )
-        .alert("Could not open video", isPresented: Binding(
+        .alert("動画を開けませんでした", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
             set: { if !$0 { viewModel.errorMessage = nil } }
         )) {
@@ -59,27 +60,22 @@ struct PlayerHomeView: View {
     }
 
     private var portraitContent: some View {
-        ZStack {
-            Color(uiColor: .systemGroupedBackground)
-                .ignoresSafeArea()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    if viewModel.hasVideo {
-                        videoArea
-                    } else {
-                        emptyState
-                    }
-
-                    recentList
+        List {
+            Section {
+                if viewModel.hasVideo {
+                    videoArea
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                        .listRowBackground(Color.clear)
+                } else {
+                    emptyState
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 24)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .scrollIndicators(.hidden)
+
+            recentList
         }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     private var landscapePlayer: some View {
@@ -126,13 +122,13 @@ struct PlayerHomeView: View {
                 .font(.system(size: 42, weight: .regular))
                 .foregroundStyle(.blue)
 
-            Text("Open an MP4")
+            Text("MP4を開く")
                 .font(.headline)
 
             Button {
                 isFileImporterPresented = true
             } label: {
-                Label("Open Video", systemImage: "folder")
+                Label("動画を選択", systemImage: "folder")
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
@@ -140,40 +136,36 @@ struct PlayerHomeView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity)
-        .nativeCard()
     }
 
     @ViewBuilder
     private var recentList: some View {
         if !recentStore.videos.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Recent")
-                    .font(.headline)
+            Section("最近開いた動画") {
+                ForEach(recentStore.videos) { video in
+                    Button {
+                        openRecent(video)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text(video.title)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
 
-                LazyVStack(spacing: 8) {
-                    ForEach(recentStore.videos) { video in
-                        Button {
-                            openRecent(video)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Text(video.title)
-                                    .font(.body)
-                                    .lineLimit(1)
+                            Spacer()
 
-                                Spacer()
-
-                                Image(systemName: "play.circle")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .nativeCard(cornerRadius: 12)
+                            Image(systemName: "play.circle")
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.plain)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            deleteRecent(video)
+                        } label: {
+                            Label("削除", systemImage: "trash")
+                        }
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
@@ -186,13 +178,13 @@ struct PlayerHomeView: View {
                 let storedURL = try recentStore.resolveURL(for: recent)
                 viewModel.open(url: storedURL, recentVideoID: recent.id)
             } catch {
-                viewModel.setError("The selected file could not be imported for playback. Make sure it is downloaded locally in Files, then try again.")
+                viewModel.setError("選択したファイルを取り込めませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }
         case .failure(let error):
             if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
                 return
             }
-            viewModel.setError("The selected file could not be opened.")
+            viewModel.setError("選択したファイルを開けませんでした。")
         }
     }
 
@@ -201,23 +193,17 @@ struct PlayerHomeView: View {
             let url = try recentStore.resolveURL(for: video)
             viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id)
         } catch {
-            viewModel.setError("The recent file is no longer available. Open it again from Files.")
+            viewModel.setError("この動画はもう利用できません。もう一度ファイルAppから選択してください。")
         }
     }
 
+    private func deleteRecent(_ video: RecentVideo) {
+        let isCurrentVideo = viewModel.currentRecentVideoID == video.id
+        recentStore.remove(video, keepingStoredFile: isCurrentVideo)
+    }
 }
 
 #Preview {
     PlayerHomeView()
         .environmentObject(RecentVideoStore())
-}
-
-private extension View {
-    func nativeCard(cornerRadius: CGFloat = 12) -> some View {
-        background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color(uiColor: .separator).opacity(0.12), lineWidth: 1)
-            }
-    }
 }

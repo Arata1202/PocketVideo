@@ -50,6 +50,15 @@ final class RecentVideoStore: ObservableObject {
         save()
     }
 
+    func remove(_ video: RecentVideo, keepingStoredFile: Bool = false) {
+        guard let index = videos.firstIndex(where: { $0.id == video.id }) else { return }
+        let removed = videos.remove(at: index)
+        if !keepingStoredFile {
+            removeStoredFile(for: removed)
+        }
+        save()
+    }
+
     func resolveURL(for video: RecentVideo) throws -> URL {
         var isStale = false
         let url = try URL(resolvingBookmarkData: video.bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
@@ -212,11 +221,11 @@ enum RecentVideoStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .staleBookmark:
-            return "The saved file reference is no longer valid."
+            return "保存済みのファイル参照が無効です。"
         case .fileUnavailable:
-            return "The saved video file is no longer available."
+            return "保存済みの動画ファイルが見つかりません。"
         case .importFailed:
-            return "The selected file could not be imported."
+            return "選択したファイルを取り込めませんでした。"
         }
     }
 }
