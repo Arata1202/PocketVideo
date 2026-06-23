@@ -23,7 +23,7 @@ struct PlayerHomeView: View {
                 }
                 .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
             }
-            .navigationTitle("MP4プレイヤー")
+            .navigationTitle("MP4 Player")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -123,8 +123,11 @@ struct PlayerHomeView: View {
 
     @ViewBuilder
     private var recentList: some View {
-        if !recentStore.videos.isEmpty {
-            Section("最近開いた動画") {
+        Section("最近開いた動画") {
+            if recentStore.videos.isEmpty {
+                Text("まだありません")
+                    .foregroundStyle(.secondary)
+            } else {
                 ForEach(recentStore.videos) { video in
                     Button {
                         openRecent(video)

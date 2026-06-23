@@ -19,7 +19,7 @@ targets:
     info:
       path: MP4AirPlayPlayer/Info.plist
       properties:
-        CFBundleDisplayName: MP4プレイヤー
+        CFBundleDisplayName: MP4 Player
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
