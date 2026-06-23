@@ -1,9 +1,14 @@
 # Xcode
 DerivedData/
+*.xcodeproj/
+*.xcworkspace/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcuserstate
+
+# XcodeGen
+MP4AirPlayPlayer/Info.plist
 
 # Swift Package Manager
 .build/
@@ -17,4 +22,3 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output/
-
