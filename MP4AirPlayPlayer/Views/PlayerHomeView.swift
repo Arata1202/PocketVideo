@@ -9,48 +9,67 @@ struct PlayerHomeView: View {
     @State private var isFileImporterPresented = false
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
+        ZStack {
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                header
                 videoArea
                 controlBar
                 recentList
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(Color(.systemBackground))
-            .navigationTitle("MP4 AirPlay")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isFileImporterPresented = true
-                    } label: {
-                        Label("Open Video", systemImage: "folder")
-                    }
-                }
-            }
-            .fileImporter(
-                isPresented: $isFileImporterPresented,
-                allowedContentTypes: [.mpeg4Movie, .movie],
-                allowsMultipleSelection: false,
-                onCompletion: handleFileImport
-            )
-            .alert("Could not open video", isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(viewModel.errorMessage ?? "")
-            }
-            .onAppear {
-                viewModel.attachStore(recentStore)
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase != .active {
-                    viewModel.saveCurrentPosition()
-                }
+        }
+        .fileImporter(
+            isPresented: $isFileImporterPresented,
+            allowedContentTypes: [.mpeg4Movie, .movie],
+            allowsMultipleSelection: false,
+            onCompletion: handleFileImport
+        )
+        .alert("Could not open video", isPresented: Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { if !$0 { viewModel.errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.errorMessage ?? "")
+        }
+        .onAppear {
+            viewModel.attachStore(recentStore)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase != .active {
+                viewModel.saveCurrentPosition()
             }
         }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("MP4 AirPlay")
+                    .font(.title2.weight(.semibold))
+                Text("Local MP4 playback")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                isFileImporterPresented = true
+            } label: {
+                Label("Open Video", systemImage: "folder")
+                    .labelStyle(.iconOnly)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var videoArea: some View {
@@ -78,6 +97,7 @@ struct PlayerHomeView: View {
             .aspectRatio(16.0 / 9.0, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .background(Color.black)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .clipped()
     }
 
@@ -159,36 +179,56 @@ struct PlayerHomeView: View {
             .font(.title3)
         }
         .padding()
-        .background(.background)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var recentList: some View {
-        List {
-            Section("Recent") {
-                if recentStore.videos.isEmpty {
-                    Text("No recent videos")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(recentStore.videos) { video in
-                        Button {
-                            openRecent(video)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(video.title)
-                                    .lineLimit(1)
-                                if video.lastPosition > 0 {
-                                    Text("Resume at \(formatTime(video.lastPosition))")
-                                        .font(.caption)
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Recent")
+                .font(.headline)
+
+            if recentStore.videos.isEmpty {
+                Text("No recent videos")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                    .padding(.horizontal, 14)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(recentStore.videos) { video in
+                            Button {
+                                openRecent(video)
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(video.title)
+                                            .font(.body)
+                                            .lineLimit(1)
+
+                                        if video.lastPosition > 0 {
+                                            Text("Resume at \(formatTime(video.lastPosition))")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "play.circle")
                                         .foregroundStyle(.secondary)
                                 }
+                                .padding(14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func handleFileImport(_ result: Result<[URL], Error>) {
