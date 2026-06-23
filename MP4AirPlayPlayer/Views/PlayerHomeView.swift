@@ -108,12 +108,6 @@ struct PlayerHomeView: View {
                 }
 
                 Spacer()
-
-                transportControls(spacing: 18, playWidth: 58, buttonHeight: 44)
-                    .font(.title3)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: Capsule())
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
@@ -222,17 +216,9 @@ struct PlayerHomeView: View {
                             openRecent(video)
                         } label: {
                             HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(video.title)
-                                        .font(.body)
-                                        .lineLimit(1)
-
-                                    if video.lastPosition > 0 {
-                                        Text("Resume at \(formatTime(video.lastPosition))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+                                Text(video.title)
+                                    .font(.body)
+                                    .lineLimit(1)
 
                                 Spacer()
 
@@ -310,12 +296,6 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func formatTime(_ seconds: TimeInterval) -> String {
-        let totalSeconds = Int(seconds)
-        let minutes = totalSeconds / 60
-        let remainingSeconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, remainingSeconds)
-    }
 }
 
 #Preview {
