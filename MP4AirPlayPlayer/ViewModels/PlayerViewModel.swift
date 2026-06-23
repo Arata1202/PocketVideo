@@ -29,15 +29,17 @@ final class PlayerViewModel: ObservableObject {
     }
 
     deinit {
-        if let timeObserver {
-            player.removeTimeObserver(timeObserver)
-        }
-        stopSecurityScopedAccess()
-        if let routeObserver {
-            NotificationCenter.default.removeObserver(routeObserver)
-        }
-        if let playbackEndObserver {
-            NotificationCenter.default.removeObserver(playbackEndObserver)
+        MainActor.assumeIsolated {
+            if let timeObserver {
+                player.removeTimeObserver(timeObserver)
+            }
+            stopSecurityScopedAccess()
+            if let routeObserver {
+                NotificationCenter.default.removeObserver(routeObserver)
+            }
+            if let playbackEndObserver {
+                NotificationCenter.default.removeObserver(playbackEndObserver)
+            }
         }
     }
 
@@ -136,7 +138,7 @@ final class PlayerViewModel: ObservableObject {
 
     private func addRouteObserver() {
         routeObserver = NotificationCenter.default.addObserver(
-            name: AVAudioSession.routeChangeNotification,
+            forName: AVAudioSession.routeChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -148,7 +150,7 @@ final class PlayerViewModel: ObservableObject {
 
     private func addPlaybackEndObserver() {
         playbackEndObserver = NotificationCenter.default.addObserver(
-            name: .AVPlayerItemDidPlayToEndTime,
+            forName: .AVPlayerItemDidPlayToEndTime,
             object: nil,
             queue: .main
         ) { [weak self] _ in
