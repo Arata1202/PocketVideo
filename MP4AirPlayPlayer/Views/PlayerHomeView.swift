@@ -61,14 +61,14 @@ struct PlayerHomeView: View {
 
     private var portraitContent: some View {
         List {
-            Section {
-                if viewModel.hasVideo {
+            if viewModel.hasVideo {
+                Section {
                     videoArea
                         .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
                         .listRowBackground(Color.clear)
-                } else {
-                    emptyState
                 }
+            } else {
+                openVideoSection
             }
 
             recentList
@@ -108,34 +108,17 @@ struct PlayerHomeView: View {
         }
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.18), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "play.rectangle.on.rectangle")
-                .font(.system(size: 42, weight: .regular))
-                .foregroundStyle(.blue)
-
-            Text("MP4を開く")
-                .font(.headline)
-
+    private var openVideoSection: some View {
+        Section {
             Button {
                 isFileImporterPresented = true
             } label: {
                 Label("動画を選択", systemImage: "folder")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 28)
-        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -146,25 +129,17 @@ struct PlayerHomeView: View {
                     Button {
                         openRecent(video)
                     } label: {
-                        HStack(spacing: 12) {
+                        Label {
                             Text(video.title)
-                                .foregroundStyle(.primary)
                                 .lineLimit(1)
-
-                            Spacer()
-
-                            Image(systemName: "play.circle")
+                        } icon: {
+                            Image(systemName: "film")
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            deleteRecent(video)
-                        } label: {
-                            Label("削除", systemImage: "trash")
-                        }
-                    }
+                    .buttonStyle(.plain)
                 }
+                .onDelete(perform: deleteRecent)
             }
         }
     }
@@ -197,9 +172,14 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func deleteRecent(_ video: RecentVideo) {
-        let isCurrentVideo = viewModel.currentRecentVideoID == video.id
-        recentStore.remove(video, keepingStoredFile: isCurrentVideo)
+    private func deleteRecent(at offsets: IndexSet) {
+        let videos = recentStore.videos
+        offsets
+            .compactMap { videos.indices.contains($0) ? videos[$0] : nil }
+            .forEach { video in
+                let isCurrentVideo = viewModel.currentRecentVideoID == video.id
+                recentStore.remove(video, keepingStoredFile: isCurrentVideo)
+            }
     }
 }
 
