@@ -11,27 +11,17 @@ struct PlayerHomeView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(uiColor: .systemGroupedBackground)
-                    .ignoresSafeArea()
+            GeometryReader { geometry in
+                let isLandscapeVideoMode = geometry.size.width > geometry.size.height && viewModel.hasVideo
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if viewModel.hasVideo {
-                            videoArea
-                            playbackPanel
-                        } else {
-                            emptyState
-                        }
-
-                        recentList
+                Group {
+                    if isLandscapeVideoMode {
+                        landscapePlayer
+                    } else {
+                        portraitContent
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 24)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .scrollIndicators(.hidden)
+                .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
             }
             .navigationTitle("MP4 AirPlay")
             .toolbar {
@@ -65,6 +55,68 @@ struct PlayerHomeView: View {
             if newPhase != .active {
                 viewModel.saveCurrentPosition()
             }
+        }
+    }
+
+    private var portraitContent: some View {
+        ZStack {
+            Color(uiColor: .systemGroupedBackground)
+                .ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    if viewModel.hasVideo {
+                        videoArea
+                        playbackPanel
+                    } else {
+                        emptyState
+                    }
+
+                    recentList
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private var landscapePlayer: some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+
+            VideoPlayer(player: viewModel.player)
+                .ignoresSafeArea()
+
+            if viewModel.isLoading {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(1.3)
+            }
+
+            VStack {
+                HStack {
+                    Spacer()
+
+                    AirPlayRouteButton()
+                        .frame(width: 44, height: 44)
+                        .padding(6)
+                        .background(.ultraThinMaterial, in: Circle())
+                }
+
+                Spacer()
+
+                transportControls(spacing: 18, playWidth: 58, buttonHeight: 44)
+                    .font(.title3)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
         }
     }
 
@@ -149,34 +201,7 @@ struct PlayerHomeView: View {
                     .frame(width: 44, height: 44)
             }
 
-            HStack(spacing: 22) {
-                Button {
-                    viewModel.skip(seconds: -10)
-                } label: {
-                    Label("10 seconds back", systemImage: "gobackward.10")
-                }
-                .labelStyle(.iconOnly)
-                .frame(width: 42, height: 42)
-                .buttonStyle(.bordered)
-
-                Button {
-                    viewModel.playPause()
-                } label: {
-                    Label(viewModel.isPlaying ? "Pause" : "Play", systemImage: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                        .labelStyle(.iconOnly)
-                        .frame(width: 54, height: 42)
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    viewModel.skip(seconds: 10)
-                } label: {
-                    Label("10 seconds forward", systemImage: "goforward.10")
-                }
-                .labelStyle(.iconOnly)
-                .frame(width: 42, height: 42)
-                .buttonStyle(.bordered)
-            }
+            transportControls()
             .frame(maxWidth: .infinity)
             .font(.title3)
         }
@@ -223,6 +248,37 @@ struct PlayerHomeView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private func transportControls(spacing: CGFloat = 22, playWidth: CGFloat = 54, buttonHeight: CGFloat = 42) -> some View {
+        HStack(spacing: spacing) {
+            Button {
+                viewModel.skip(seconds: -10)
+            } label: {
+                Label("10 seconds back", systemImage: "gobackward.10")
+            }
+            .labelStyle(.iconOnly)
+            .frame(width: 42, height: buttonHeight)
+            .buttonStyle(.bordered)
+
+            Button {
+                viewModel.playPause()
+            } label: {
+                Label(viewModel.isPlaying ? "Pause" : "Play", systemImage: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                    .labelStyle(.iconOnly)
+                    .frame(width: playWidth, height: buttonHeight)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button {
+                viewModel.skip(seconds: 10)
+            } label: {
+                Label("10 seconds forward", systemImage: "goforward.10")
+            }
+            .labelStyle(.iconOnly)
+            .frame(width: 42, height: buttonHeight)
+            .buttonStyle(.bordered)
         }
     }
 
