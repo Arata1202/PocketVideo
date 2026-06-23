@@ -48,7 +48,7 @@ final class PlayerViewModel: ObservableObject {
         recentStore = store
     }
 
-    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil) {
+    func open(url: URL, displayTitle: String? = nil, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil) {
         isLoading = true
         errorMessage = nil
 
@@ -57,7 +57,7 @@ final class PlayerViewModel: ObservableObject {
             scopedURL = url
         }
 
-        title = url.lastPathComponent
+        title = displayTitle ?? url.lastPathComponent
         hasVideo = true
         currentRecentVideoID = recentVideoID
 

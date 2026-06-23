@@ -252,7 +252,7 @@ struct PlayerHomeView: View {
             do {
                 let recent = try recentStore.addOrUpdate(url: url)
                 let storedURL = try recentStore.resolveURL(for: recent)
-                viewModel.open(url: storedURL, recentVideoID: recent.id)
+                viewModel.open(url: storedURL, displayTitle: recent.title, recentVideoID: recent.id)
             } catch {
                 viewModel.setError("The selected file could not be imported for playback. Make sure it is downloaded locally in Files, then try again.")
             }
@@ -264,7 +264,7 @@ struct PlayerHomeView: View {
     private func openRecent(_ video: RecentVideo) {
         do {
             let url = try recentStore.resolveURL(for: video)
-            viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id)
+            viewModel.open(url: url, displayTitle: video.title, resumePosition: video.lastPosition, recentVideoID: video.id)
         } catch {
             viewModel.setError("The recent file is no longer available. Open it again from Files.")
         }
