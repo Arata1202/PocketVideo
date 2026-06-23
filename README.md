@@ -12,7 +12,7 @@ It focuses on opening local video files from Files, playing them on iPhone or iP
 - Use basic playback controls, including play/pause and 10-second skip.
 - Resume recently opened videos.
 - Show AirPlay connection status.
-- Support portrait and landscape orientations.
+- Use a portrait-first layout on iPhone.
 
 ## Requirements
 
