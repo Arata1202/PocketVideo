@@ -1,0 +1,37 @@
+name: MP4AirPlayPlayer
+options:
+  bundleIdPrefix: com.arata1202
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+targets:
+  MP4AirPlayPlayer:
+    type: application
+    platform: iOS
+    sources:
+      - MP4AirPlayPlayer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.arata1202.MP4AirPlayPlayer
+    info:
+      path: MP4AirPlayPlayer/Info.plist
+      properties:
+        CFBundleDisplayName: MP4 AirPlay
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false

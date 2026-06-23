@@ -1,0 +1,197 @@
+import AVKit
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct PlayerHomeView: View {
+    @EnvironmentObject private var recentStore: RecentVideoStore
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var viewModel = PlayerViewModel()
+    @State private var isFileImporterPresented = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                videoArea
+                controlBar
+                recentList
+            }
+            .navigationTitle("MP4 AirPlay")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isFileImporterPresented = true
+                    } label: {
+                        Label("Open Video", systemImage: "folder")
+                    }
+                }
+            }
+            .fileImporter(
+                isPresented: $isFileImporterPresented,
+                allowedContentTypes: [.mpeg4Movie, .movie],
+                allowsMultipleSelection: false,
+                onCompletion: handleFileImport
+            )
+            .alert("Could not open video", isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.errorMessage ?? "")
+            }
+            .onAppear {
+                viewModel.attachStore(recentStore)
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase != .active {
+                    viewModel.saveCurrentPosition()
+                }
+            }
+        }
+    }
+
+    private var videoArea: some View {
+        ZStack {
+            Color.black
+
+            VideoPlayer(player: viewModel.player)
+                .overlay(alignment: .topLeading) {
+                    statusBadge
+                        .padding()
+                }
+
+            if viewModel.isLoading {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(1.3)
+            }
+
+            if viewModel.title == "No Video" && !viewModel.isLoading {
+                ContentUnavailableView(
+                    "Open an MP4",
+                    systemImage: "play.rectangle",
+                    description: Text("Choose a local video, then send it to Apple TV with AirPlay.")
+                )
+                .foregroundStyle(.white)
+            }
+        }
+        .aspectRatio(16.0 / 9.0, contentMode: .fit)
+        .background(Color.black)
+    }
+
+    private var statusBadge: some View {
+        Label(
+            viewModel.isAirPlayActive ? "AirPlay Connected" : "Local Playback",
+            systemImage: viewModel.isAirPlayActive ? "airplayvideo.circle.fill" : "iphone"
+        )
+        .font(.caption)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    private var controlBar: some View {
+        VStack(spacing: 12) {
+            Text(viewModel.title)
+                .font(.headline)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 18) {
+                Button {
+                    viewModel.skip(seconds: -10)
+                } label: {
+                    Label("10 seconds back", systemImage: "gobackward.10")
+                }
+                .labelStyle(.iconOnly)
+
+                Button {
+                    viewModel.playPause()
+                } label: {
+                    Label(viewModel.isPlaying ? "Pause" : "Play", systemImage: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    viewModel.skip(seconds: 10)
+                } label: {
+                    Label("10 seconds forward", systemImage: "goforward.10")
+                }
+                .labelStyle(.iconOnly)
+
+                Spacer()
+
+                AirPlayRouteButton()
+                    .frame(width: 44, height: 44)
+            }
+            .font(.title3)
+        }
+        .padding()
+        .background(.background)
+    }
+
+    private var recentList: some View {
+        List {
+            Section("Recent") {
+                if recentStore.videos.isEmpty {
+                    Text("No recent videos")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(recentStore.videos) { video in
+                        Button {
+                            openRecent(video)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(video.title)
+                                    .lineLimit(1)
+                                if video.lastPosition > 0 {
+                                    Text("Resume at \(formatTime(video.lastPosition))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            do {
+                let recent = try recentStore.addOrUpdate(url: url)
+                viewModel.open(url: url, recentVideoID: recent.id)
+            } catch {
+                viewModel.setError("The selected file could not be saved for recent playback.")
+            }
+        case .failure:
+            viewModel.setError("The selected file could not be opened.")
+        }
+    }
+
+    private func openRecent(_ video: RecentVideo) {
+        do {
+            let url = try recentStore.resolveURL(for: video)
+            viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id)
+        } catch {
+            viewModel.setError("The recent file is no longer available. Open it again from Files.")
+        }
+    }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        let totalSeconds = Int(seconds)
+        let minutes = totalSeconds / 60
+        let remainingSeconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+}
+
+#Preview {
+    PlayerHomeView()
+        .environmentObject(RecentVideoStore())
+}
+
