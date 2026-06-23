@@ -254,7 +254,7 @@ struct PlayerHomeView: View {
                 let storedURL = try recentStore.resolveURL(for: recent)
                 viewModel.open(url: storedURL, recentVideoID: recent.id)
             } catch {
-                viewModel.setError("The selected file could not be imported for playback.")
+                viewModel.setError("The selected file could not be imported for playback. Make sure it is downloaded locally in Files, then try again.")
             }
         case .failure:
             viewModel.setError("The selected file could not be opened.")

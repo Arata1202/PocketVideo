@@ -77,8 +77,15 @@ final class RecentVideoStore: ObservableObject {
         var copyError: Error?
         let coordinator = NSFileCoordinator()
         coordinator.coordinate(readingItemAt: sourceURL, options: [], error: &coordinationError) { readableURL in
+            let didAccessReadableURL = readableURL.startAccessingSecurityScopedResource()
+            defer {
+                if didAccessReadableURL {
+                    readableURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
             do {
-                try FileManager.default.copyItem(at: readableURL, to: destinationURL)
+                try copyVideoFile(from: readableURL, to: destinationURL)
             } catch {
                 copyError = error
             }
@@ -93,6 +100,60 @@ final class RecentVideoStore: ObservableObject {
         }
 
         return destinationURL
+    }
+
+    private func copyVideoFile(from sourceURL: URL, to destinationURL: URL) throws {
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        } catch {
+            do {
+                try streamCopyVideoFile(from: sourceURL, to: destinationURL)
+            } catch {
+                try? FileManager.default.removeItem(at: destinationURL)
+                throw error
+            }
+        }
+    }
+
+    private func streamCopyVideoFile(from sourceURL: URL, to destinationURL: URL) throws {
+        guard let input = InputStream(url: sourceURL) else {
+            throw RecentVideoStoreError.fileUnavailable
+        }
+        guard let output = OutputStream(url: destinationURL, append: false) else {
+            throw RecentVideoStoreError.importFailed
+        }
+
+        input.open()
+        output.open()
+        defer {
+            input.close()
+            output.close()
+        }
+
+        let bufferSize = 1024 * 1024
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer {
+            buffer.deallocate()
+        }
+
+        while input.hasBytesAvailable {
+            let bytesRead = input.read(buffer, maxLength: bufferSize)
+            if bytesRead < 0 {
+                throw input.streamError ?? RecentVideoStoreError.fileUnavailable
+            }
+            if bytesRead == 0 {
+                break
+            }
+
+            var bytesWritten = 0
+            while bytesWritten < bytesRead {
+                let result = output.write(buffer.advanced(by: bytesWritten), maxLength: bytesRead - bytesWritten)
+                if result <= 0 {
+                    throw output.streamError ?? RecentVideoStoreError.importFailed
+                }
+                bytesWritten += result
+            }
+        }
     }
 
     private func importedVideosDirectory() throws -> URL {
@@ -146,6 +207,7 @@ final class RecentVideoStore: ObservableObject {
 enum RecentVideoStoreError: LocalizedError {
     case staleBookmark
     case fileUnavailable
+    case importFailed
 
     var errorDescription: String? {
         switch self {
@@ -153,6 +215,8 @@ enum RecentVideoStoreError: LocalizedError {
             return "The saved file reference is no longer valid."
         case .fileUnavailable:
             return "The saved video file is no longer available."
+        case .importFailed:
+            return "The selected file could not be imported."
         }
     }
 }
