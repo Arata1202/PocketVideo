@@ -10,19 +10,10 @@ struct PlayerHomeView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(red: 0.80, green: 0.90, blue: 1.00),
-                    Color(red: 0.94, green: 0.95, blue: 0.99),
-                    Color(red: 0.88, green: 0.96, blue: 0.93)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-                .ignoresSafeArea()
+            appBackground
 
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     header
 
                     if viewModel.hasVideo {
@@ -34,11 +25,10 @@ struct PlayerHomeView: View {
 
                     recentList
                 }
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
-                .padding(.bottom, 20)
-                .frame(maxWidth: 640)
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .scrollIndicators(.hidden)
         }
@@ -66,6 +56,30 @@ struct PlayerHomeView: View {
         }
     }
 
+    private var appBackground: some View {
+        LinearGradient(
+            colors: [
+                Color(red: 0.77, green: 0.88, blue: 1.00),
+                Color(red: 0.96, green: 0.97, blue: 1.00),
+                Color(red: 0.87, green: 0.96, blue: 0.93)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .overlay {
+            LinearGradient(
+                colors: [
+                    .white.opacity(0.52),
+                    .white.opacity(0.18),
+                    .clear
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .ignoresSafeArea()
+    }
+
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -88,7 +102,6 @@ struct PlayerHomeView: View {
             .buttonStyle(.glassProminent)
         }
         .frame(maxWidth: .infinity)
-        .padding(.horizontal, 4)
     }
 
     private var videoArea: some View {
@@ -162,7 +175,7 @@ struct PlayerHomeView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity)
-        .glassCard()
+        .glassCard(cornerRadius: 12)
     }
 
     private var statusBadge: some View {
@@ -240,12 +253,11 @@ struct PlayerHomeView: View {
                 .font(.headline)
 
             if recentStore.videos.isEmpty {
-                Text("No recent videos")
+                Label("No recent videos", systemImage: "clock")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .glassCard(cornerRadius: 8, material: .thinMaterial)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
             } else {
                 LazyVStack(spacing: 8) {
                     ForEach(recentStore.videos) { video in
