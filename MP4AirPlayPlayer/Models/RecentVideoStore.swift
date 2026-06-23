@@ -12,7 +12,7 @@ final class RecentVideoStore: ObservableObject {
     }
 
     func addOrUpdate(url: URL, position: TimeInterval = 0) throws -> RecentVideo {
-        let bookmarkData = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+        let bookmarkData = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
         let title = url.lastPathComponent
         let sourceKey = Self.sourceKey(for: url)
 
@@ -42,7 +42,7 @@ final class RecentVideoStore: ObservableObject {
 
     func resolveURL(for video: RecentVideo) throws -> URL {
         var isStale = false
-        let url = try URL(resolvingBookmarkData: video.bookmarkData, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
+        let url = try URL(resolvingBookmarkData: video.bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
         if isStale {
             throw RecentVideoStoreError.staleBookmark
         }
