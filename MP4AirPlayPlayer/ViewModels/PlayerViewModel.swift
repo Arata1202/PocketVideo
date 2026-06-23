@@ -138,7 +138,8 @@ final class PlayerViewModel: ObservableObject {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            errorMessage = "Audio session setup failed."
+            // Playback can still be attempted even if the session is not ready at launch.
+            // File-open errors are the only failures surfaced through the video alert.
         }
     }
 

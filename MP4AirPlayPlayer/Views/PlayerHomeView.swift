@@ -237,7 +237,10 @@ struct PlayerHomeView: View {
             } catch {
                 viewModel.setError("The selected file could not be imported for playback. Make sure it is downloaded locally in Files, then try again.")
             }
-        case .failure:
+        case .failure(let error):
+            if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
+                return
+            }
             viewModel.setError("The selected file could not be opened.")
         }
     }
