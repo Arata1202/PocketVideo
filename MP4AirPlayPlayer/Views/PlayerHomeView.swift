@@ -80,14 +80,16 @@ struct PlayerHomeView: View {
                     .scaleEffect(1.3)
             }
 
-            VStack {
-                HStack {
-                    statusBadge
+            if viewModel.isAirPlayActive {
+                VStack {
+                    HStack {
+                        airPlayBadge
+                        Spacer()
+                    }
                     Spacer()
                 }
-                Spacer()
+                .padding(12)
             }
-            .padding(12)
         }
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
         .frame(maxWidth: .infinity)
@@ -105,15 +107,8 @@ struct PlayerHomeView: View {
                 .font(.system(size: 42, weight: .regular))
                 .foregroundStyle(.blue)
 
-            VStack(spacing: 4) {
-                Text("Open an MP4")
-                    .font(.headline)
-
-                Text("Choose a local video from Files.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+            Text("Open an MP4")
+                .font(.headline)
 
             Button {
                 isFileImporterPresented = true
@@ -129,11 +124,8 @@ struct PlayerHomeView: View {
         .nativeCard()
     }
 
-    private var statusBadge: some View {
-        Label(
-            viewModel.isAirPlayActive ? "AirPlay Connected" : "Local Playback",
-            systemImage: viewModel.isAirPlayActive ? "airplayvideo.circle.fill" : "iphone"
-        )
+    private var airPlayBadge: some View {
+        Label("AirPlay", systemImage: "airplayvideo.circle.fill")
         .font(.caption)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -147,15 +139,9 @@ struct PlayerHomeView: View {
     private var playbackPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(viewModel.title)
-                        .font(.headline)
-                        .lineLimit(1)
-
-                    Text(viewModel.isAirPlayActive ? "AirPlay Connected" : "Ready to play")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(viewModel.title)
+                    .font(.headline)
+                    .lineLimit(1)
 
                 Spacer()
 
@@ -198,18 +184,13 @@ struct PlayerHomeView: View {
         .nativeCard()
     }
 
+    @ViewBuilder
     private var recentList: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recent")
-                .font(.headline)
+        if !recentStore.videos.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Recent")
+                    .font(.headline)
 
-            if recentStore.videos.isEmpty {
-                Label("No recent videos", systemImage: "clock")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
-            } else {
                 LazyVStack(spacing: 8) {
                     ForEach(recentStore.videos) { video in
                         Button {
@@ -241,8 +222,8 @@ struct PlayerHomeView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func handleFileImport(_ result: Result<[URL], Error>) {
