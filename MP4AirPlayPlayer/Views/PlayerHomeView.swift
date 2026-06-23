@@ -14,7 +14,7 @@ struct PlayerHomeView: View {
                 .ignoresSafeArea()
 
             ScrollView {
-                VStack(spacing: 18) {
+                VStack(spacing: 12) {
                     header
 
                     if viewModel.hasVideo {
@@ -26,9 +26,9 @@ struct PlayerHomeView: View {
 
                     recentList
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 24)
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 20)
                 .frame(maxWidth: 640)
                 .frame(maxWidth: .infinity)
             }
@@ -61,7 +61,7 @@ struct PlayerHomeView: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("MP4 AirPlay")
-                    .font(.title2.weight(.semibold))
+                    .font(.title3.weight(.semibold))
                 Text("Local MP4 playback")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -74,7 +74,7 @@ struct PlayerHomeView: View {
             } label: {
                 Label("Open Video", systemImage: "folder")
                     .labelStyle(.iconOnly)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 40, height: 40)
             }
             .buttonStyle(.borderedProminent)
         }
@@ -109,29 +109,36 @@ struct PlayerHomeView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "play.rectangle.fill")
-                .font(.system(size: 48, weight: .semibold))
-                .foregroundStyle(.blue)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "play.rectangle.fill")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(.blue)
+                    .frame(width: 42, height: 42)
+                    .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            Text("Open an MP4")
-                .font(.title3.weight(.semibold))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Open an MP4")
+                        .font(.headline)
 
-            Text("Choose a local video from Files, then send playback to Apple TV with AirPlay.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+                    Text("Choose a local video from Files.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
 
             Button {
                 isFileImporterPresented = true
             } label: {
                 Label("Open Video", systemImage: "folder")
-                    .frame(maxWidth: .infinity)
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 46)
             }
             .buttonStyle(.borderedProminent)
         }
-        .padding(24)
+        .padding(14)
         .frame(maxWidth: .infinity)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
@@ -148,7 +155,7 @@ struct PlayerHomeView: View {
     }
 
     private var playbackPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.title)
@@ -173,14 +180,14 @@ struct PlayerHomeView: View {
                     Label("10 seconds back", systemImage: "gobackward.10")
                 }
                 .labelStyle(.iconOnly)
-                .frame(width: 44, height: 44)
+                .frame(width: 42, height: 42)
 
                 Button {
                     viewModel.playPause()
                 } label: {
                     Label(viewModel.isPlaying ? "Pause" : "Play", systemImage: viewModel.isPlaying ? "pause.fill" : "play.fill")
                         .labelStyle(.iconOnly)
-                        .frame(width: 56, height: 44)
+                        .frame(width: 54, height: 42)
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -190,25 +197,26 @@ struct PlayerHomeView: View {
                     Label("10 seconds forward", systemImage: "goforward.10")
                 }
                 .labelStyle(.iconOnly)
-                .frame(width: 44, height: 44)
+                .frame(width: 42, height: 42)
             }
             .frame(maxWidth: .infinity)
             .font(.title3)
         }
-        .padding(16)
+        .padding(14)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var recentList: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Recent")
                 .font(.headline)
 
             if recentStore.videos.isEmpty {
                 Text("No recent videos")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-                    .padding(.horizontal, 14)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, 12)
                     .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 LazyVStack(spacing: 8) {
@@ -234,7 +242,7 @@ struct PlayerHomeView: View {
                                 Image(systemName: "play.circle")
                                     .foregroundStyle(.secondary)
                             }
-                            .padding(14)
+                            .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
