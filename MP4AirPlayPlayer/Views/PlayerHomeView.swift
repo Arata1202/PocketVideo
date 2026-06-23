@@ -10,7 +10,15 @@ struct PlayerHomeView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemGroupedBackground)
+            LinearGradient(
+                colors: [
+                    Color(red: 0.80, green: 0.90, blue: 1.00),
+                    Color(red: 0.94, green: 0.95, blue: 0.99),
+                    Color(red: 0.88, green: 0.96, blue: 0.93)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
                 .ignoresSafeArea()
 
             ScrollView {
@@ -32,6 +40,7 @@ struct PlayerHomeView: View {
                 .frame(maxWidth: 640)
                 .frame(maxWidth: .infinity)
             }
+            .scrollIndicators(.hidden)
         }
         .fileImporter(
             isPresented: $isFileImporterPresented,
@@ -76,9 +85,10 @@ struct PlayerHomeView: View {
                     .labelStyle(.iconOnly)
                     .frame(width: 40, height: 40)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
         }
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, 4)
     }
 
     private var videoArea: some View {
@@ -105,7 +115,11 @@ struct PlayerHomeView: View {
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
         .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.white.opacity(0.45), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
     }
 
     private var emptyState: some View {
@@ -113,9 +127,17 @@ struct PlayerHomeView: View {
             HStack(spacing: 12) {
                 Image(systemName: "play.rectangle.fill")
                     .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(.white)
                     .frame(width: 42, height: 42)
-                    .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(
+                        LinearGradient(
+                            colors: [.blue, .cyan],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                    .shadow(color: .blue.opacity(0.24), radius: 10, y: 4)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Open an MP4")
@@ -136,11 +158,11 @@ struct PlayerHomeView: View {
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 46)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
         }
         .padding(14)
         .frame(maxWidth: .infinity)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .glassCard()
     }
 
     private var statusBadge: some View {
@@ -152,6 +174,10 @@ struct PlayerHomeView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.ultraThinMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(0.45), lineWidth: 1)
+        }
     }
 
     private var playbackPanel: some View {
@@ -181,6 +207,7 @@ struct PlayerHomeView: View {
                 }
                 .labelStyle(.iconOnly)
                 .frame(width: 42, height: 42)
+                .buttonStyle(.glass)
 
                 Button {
                     viewModel.playPause()
@@ -189,7 +216,7 @@ struct PlayerHomeView: View {
                         .labelStyle(.iconOnly)
                         .frame(width: 54, height: 42)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
 
                 Button {
                     viewModel.skip(seconds: 10)
@@ -198,12 +225,13 @@ struct PlayerHomeView: View {
                 }
                 .labelStyle(.iconOnly)
                 .frame(width: 42, height: 42)
+                .buttonStyle(.glass)
             }
             .frame(maxWidth: .infinity)
             .font(.title3)
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .glassCard()
     }
 
     private var recentList: some View {
@@ -217,7 +245,7 @@ struct PlayerHomeView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .padding(.horizontal, 12)
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .glassCard(cornerRadius: 8, material: .thinMaterial)
             } else {
                 LazyVStack(spacing: 8) {
                     ForEach(recentStore.videos) { video in
@@ -244,7 +272,7 @@ struct PlayerHomeView: View {
                             }
                             .padding(12)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .glassCard(cornerRadius: 8, material: .thinMaterial)
                         }
                         .buttonStyle(.plain)
                     }
@@ -289,4 +317,63 @@ struct PlayerHomeView: View {
 #Preview {
     PlayerHomeView()
         .environmentObject(RecentVideoStore())
+}
+
+private extension View {
+    func glassCard(cornerRadius: CGFloat = 8, material: Material = .regularMaterial) -> some View {
+        background(material, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(.white.opacity(0.5), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.08), radius: 14, y: 6)
+    }
+}
+
+private struct GlassButtonStyle: ButtonStyle {
+    var isProminent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(isProminent ? .white : .primary)
+            .background {
+                background
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(.white.opacity(isProminent ? 0.32 : 0.55), lineWidth: 1)
+            }
+            .shadow(
+                color: isProminent ? .blue.opacity(0.24) : .black.opacity(0.08),
+                radius: configuration.isPressed ? 4 : 10,
+                y: configuration.isPressed ? 2 : 5
+            )
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .animation(.easeOut(duration: 0.16), value: configuration.isPressed)
+    }
+
+    @ViewBuilder
+    private var background: some View {
+        if isProminent {
+            LinearGradient(
+                colors: [Color.blue, Color.cyan],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+        }
+    }
+}
+
+private extension ButtonStyle where Self == GlassButtonStyle {
+    static var glass: GlassButtonStyle {
+        GlassButtonStyle()
+    }
+
+    static var glassProminent: GlassButtonStyle {
+        GlassButtonStyle(isProminent: true)
+    }
 }
