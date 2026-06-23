@@ -16,6 +16,7 @@ struct PlayerHomeView: View {
                 recentList
             }
             .navigationTitle("MP4 AirPlay")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -51,27 +52,31 @@ struct PlayerHomeView: View {
     }
 
     private var videoArea: some View {
-        ZStack {
-            Color.black
-
-            if viewModel.hasVideo {
-                VideoPlayer(player: viewModel.player)
-                    .overlay(alignment: .topLeading) {
-                        statusBadge
-                            .padding()
+        Rectangle()
+            .fill(Color.black)
+            .overlay {
+                ZStack {
+                    if viewModel.hasVideo {
+                        VideoPlayer(player: viewModel.player)
+                            .overlay(alignment: .topLeading) {
+                                statusBadge
+                                    .padding()
+                            }
+                    } else {
+                        emptyVideoState
                     }
-            } else {
-                emptyVideoState
-            }
 
-            if viewModel.isLoading {
-                ProgressView()
-                    .tint(.white)
-                    .scaleEffect(1.3)
+                    if viewModel.isLoading {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(1.3)
+                    }
+                }
             }
-        }
-        .aspectRatio(16.0 / 9.0, contentMode: .fit)
-        .background(Color.black)
+            .aspectRatio(16.0 / 9.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .background(Color.black)
+            .clipped()
     }
 
     private var emptyVideoState: some View {
