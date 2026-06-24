@@ -75,7 +75,13 @@ final class PlayerViewModel: ObservableObject {
 
                 if resumePosition > 0 {
                     let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
-                    self.player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+                    self.player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                        Task { @MainActor in
+                            self?.player.play()
+                        }
+                    }
+                } else {
+                    self.player.play()
                 }
 
                 self.hasVideo = true

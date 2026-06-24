@@ -211,6 +211,10 @@ struct PlayerHomeView: View {
 private struct PlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = player
@@ -218,6 +222,8 @@ private struct PlayerView: UIViewControllerRepresentable {
         controller.allowsPictureInPicturePlayback = true
         controller.canStartPictureInPictureAutomaticallyFromInline = true
         controller.showsPlaybackControls = true
+        controller.delegate = context.coordinator
+        context.coordinator.attach(to: controller)
         return controller
     }
 
@@ -226,6 +232,52 @@ private struct PlayerView: UIViewControllerRepresentable {
         controller.allowsPictureInPicturePlayback = true
         controller.canStartPictureInPictureAutomaticallyFromInline = true
         controller.showsPlaybackControls = true
+        controller.delegate = context.coordinator
+    }
+
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+        private weak var controller: AVPlayerViewController?
+        private var didBecomeActiveObserver: NSObjectProtocol?
+        private var isPictureInPictureActive = false
+
+        deinit {
+            if let didBecomeActiveObserver {
+                NotificationCenter.default.removeObserver(didBecomeActiveObserver)
+            }
+        }
+
+        func attach(to controller: AVPlayerViewController) {
+            self.controller = controller
+
+            guard didBecomeActiveObserver == nil else { return }
+            didBecomeActiveObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.stopPictureInPictureWhenReturningToApp()
+            }
+        }
+
+        func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
+            isPictureInPictureActive = true
+        }
+
+        func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
+            isPictureInPictureActive = false
+        }
+
+        private func stopPictureInPictureWhenReturningToApp() {
+            guard isPictureInPictureActive, let controller else { return }
+
+            let player = controller.player
+            controller.allowsPictureInPicturePlayback = false
+            DispatchQueue.main.async {
+                controller.allowsPictureInPicturePlayback = true
+                controller.canStartPictureInPictureAutomaticallyFromInline = true
+                player?.play()
+            }
+        }
     }
 }
 
