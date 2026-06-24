@@ -79,6 +79,7 @@ final class PlayerViewModel: ObservableObject {
                 guard let self else { return }
 
                 let item = AVPlayerItem(asset: asset)
+                item.externalMetadata = Self.metadataItems(title: self.currentVideoTitle ?? url.lastPathComponent)
                 self.videoAspectRatio = aspectRatio
                 self.observePlayerItemStatus(item)
                 self.player.replaceCurrentItem(with: item)
@@ -179,6 +180,10 @@ final class PlayerViewModel: ObservableObject {
         commandCenter.playCommand.isEnabled = true
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.isEnabled = true
+        commandCenter.skipForwardCommand.isEnabled = true
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 10)]
+        commandCenter.skipBackwardCommand.isEnabled = true
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 10)]
 
         commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
@@ -210,6 +215,24 @@ final class PlayerViewModel: ObservableObject {
             }
             return .success
         }
+
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+
+            Task { @MainActor in
+                self?.skip(by: event.interval)
+            }
+            return .success
+        }
+
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
+
+            Task { @MainActor in
+                self?.skip(by: -event.interval)
+            }
+            return .success
+        }
     }
 
     private func updateNowPlayingInfo() {
@@ -237,6 +260,33 @@ final class PlayerViewModel: ObservableObject {
 
     private func clearNowPlayingInfo() {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
+    private func skip(by interval: TimeInterval) {
+        let currentSeconds = player.currentTime().seconds
+        guard currentSeconds.isFinite else { return }
+
+        var targetSeconds = max(currentSeconds + interval, 0)
+        if let duration = player.currentItem?.duration.seconds, duration.isFinite {
+            targetSeconds = min(targetSeconds, duration)
+        }
+        let targetTime = CMTime(seconds: targetSeconds, preferredTimescale: 600)
+
+        player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor in
+                self?.currentPlaybackPosition = targetSeconds
+                self?.saveCurrentPosition()
+                self?.updateNowPlayingInfo()
+            }
+        }
+    }
+
+    private static func metadataItems(title: String) -> [AVMetadataItem] {
+        let titleItem = AVMutableMetadataItem()
+        titleItem.identifier = .commonIdentifierTitle
+        titleItem.value = title as NSString
+        titleItem.extendedLanguageTag = "und"
+        return [titleItem]
     }
 
     private nonisolated static func videoAspectRatio(from asset: AVURLAsset) async -> CGFloat? {
