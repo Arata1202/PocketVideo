@@ -252,6 +252,7 @@ private struct SettingsView: View {
                 }
             }
         }
+        .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
     }
 }
 
