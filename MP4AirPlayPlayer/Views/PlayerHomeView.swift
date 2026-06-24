@@ -183,14 +183,8 @@ struct PlayerHomeView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            deleteRecent(video)
-                        } label: {
-                            Label("削除", systemImage: "trash")
-                        }
-                    }
                 }
+                .onDelete(perform: deleteRecent)
             }
         }
     }
@@ -224,8 +218,10 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func deleteRecent(_ video: RecentVideo) {
-        recentStore.remove(video)
+    private func deleteRecent(at offsets: IndexSet) {
+        offsets
+            .map { recentStore.videos[$0] }
+            .forEach(recentStore.remove)
     }
 
     private func playbackText(for video: RecentVideo) -> String? {
