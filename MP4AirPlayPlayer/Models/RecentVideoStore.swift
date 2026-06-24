@@ -12,11 +12,20 @@ final class RecentVideoStore: ObservableObject {
     }
 
     func addOrUpdate(url: URL, position: TimeInterval = 0) throws -> RecentVideo {
-        let bookmarkData = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let importedURL = try importVideo(from: url)
+        let bookmarkData: Data
+        do {
+            bookmarkData = try importedURL.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        } catch {
+            try? FileManager.default.removeItem(at: importedURL)
+            throw error
+        }
+
         let title = url.lastPathComponent
         let sourceKey = Self.sourceKey(for: url)
 
         if let index = videos.firstIndex(where: { $0.sourceKey == sourceKey }) {
+            removeStoredFile(for: videos[index])
             videos[index].bookmarkData = bookmarkData
             videos[index].lastPosition = position
             videos[index].updatedAt = Date()
@@ -28,6 +37,7 @@ final class RecentVideoStore: ObservableObject {
 
         let video = RecentVideo(title: title, sourceKey: sourceKey, bookmarkData: bookmarkData, lastPosition: position)
         videos.insert(video, at: 0)
+        videos.dropFirst(maxItems).forEach(removeStoredFile)
         videos = Array(videos.prefix(maxItems))
         save()
         return video
@@ -40,13 +50,152 @@ final class RecentVideoStore: ObservableObject {
         save()
     }
 
+    func remove(_ video: RecentVideo, keepingStoredFile: Bool = false) {
+        guard let index = videos.firstIndex(where: { $0.id == video.id }) else { return }
+        let removed = videos.remove(at: index)
+        if !keepingStoredFile {
+            removeStoredFile(for: removed)
+        }
+        save()
+    }
+
     func resolveURL(for video: RecentVideo) throws -> URL {
         var isStale = false
         let url = try URL(resolvingBookmarkData: video.bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
         if isStale {
             throw RecentVideoStoreError.staleBookmark
         }
+        if !FileManager.default.fileExists(atPath: url.path) {
+            throw RecentVideoStoreError.fileUnavailable
+        }
         return url
+    }
+
+    private func importVideo(from sourceURL: URL) throws -> URL {
+        let didAccessSecurityScope = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if didAccessSecurityScope {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let directoryURL = try importedVideosDirectory()
+        let destinationURL = uniqueDestinationURL(in: directoryURL, originalName: sourceURL.lastPathComponent)
+
+        var coordinationError: NSError?
+        var copyError: Error?
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(readingItemAt: sourceURL, options: [], error: &coordinationError) { readableURL in
+            let didAccessReadableURL = readableURL.startAccessingSecurityScopedResource()
+            defer {
+                if didAccessReadableURL {
+                    readableURL.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                try copyVideoFile(from: readableURL, to: destinationURL)
+            } catch {
+                copyError = error
+            }
+        }
+
+        if let coordinationError {
+            throw coordinationError
+        }
+
+        if let copyError {
+            throw copyError
+        }
+
+        return destinationURL
+    }
+
+    private func copyVideoFile(from sourceURL: URL, to destinationURL: URL) throws {
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        } catch {
+            do {
+                try streamCopyVideoFile(from: sourceURL, to: destinationURL)
+            } catch {
+                try? FileManager.default.removeItem(at: destinationURL)
+                throw error
+            }
+        }
+    }
+
+    private func streamCopyVideoFile(from sourceURL: URL, to destinationURL: URL) throws {
+        guard let input = InputStream(url: sourceURL) else {
+            throw RecentVideoStoreError.fileUnavailable
+        }
+        guard let output = OutputStream(url: destinationURL, append: false) else {
+            throw RecentVideoStoreError.importFailed
+        }
+
+        input.open()
+        output.open()
+        defer {
+            input.close()
+            output.close()
+        }
+
+        let bufferSize = 1024 * 1024
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer {
+            buffer.deallocate()
+        }
+
+        while input.hasBytesAvailable {
+            let bytesRead = input.read(buffer, maxLength: bufferSize)
+            if bytesRead < 0 {
+                throw input.streamError ?? RecentVideoStoreError.fileUnavailable
+            }
+            if bytesRead == 0 {
+                break
+            }
+
+            var bytesWritten = 0
+            while bytesWritten < bytesRead {
+                let result = output.write(buffer.advanced(by: bytesWritten), maxLength: bytesRead - bytesWritten)
+                if result <= 0 {
+                    throw output.streamError ?? RecentVideoStoreError.importFailed
+                }
+                bytesWritten += result
+            }
+        }
+    }
+
+    private func importedVideosDirectory() throws -> URL {
+        let directoryURL = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        .appendingPathComponent("ImportedVideos", isDirectory: true)
+
+        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        return directoryURL
+    }
+
+    private func uniqueDestinationURL(in directoryURL: URL, originalName: String) -> URL {
+        let fallbackName = "Video.mp4"
+        let safeName = originalName.isEmpty ? fallbackName : originalName
+        return directoryURL.appendingPathComponent("\(UUID().uuidString)-\(safeName)")
+    }
+
+    private func removeStoredFile(for video: RecentVideo) {
+        var isStale = false
+        guard let url = try? URL(
+            resolvingBookmarkData: video.bookmarkData,
+            options: [],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else {
+            return
+        }
+
+        try? FileManager.default.removeItem(at: url)
     }
 
     private static func sourceKey(for url: URL) -> String {
@@ -66,8 +215,17 @@ final class RecentVideoStore: ObservableObject {
 
 enum RecentVideoStoreError: LocalizedError {
     case staleBookmark
+    case fileUnavailable
+    case importFailed
 
     var errorDescription: String? {
-        "The saved file reference is no longer valid."
+        switch self {
+        case .staleBookmark:
+            return "保存済みのファイル参照が無効です。"
+        case .fileUnavailable:
+            return "保存済みの動画ファイルが見つかりません。"
+        case .importFailed:
+            return "選択したファイルを取り込めませんでした。"
+        }
     }
 }

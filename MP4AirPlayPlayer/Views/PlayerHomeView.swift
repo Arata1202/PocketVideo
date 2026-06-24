@@ -1,5 +1,6 @@
 import AVKit
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct PlayerHomeView: View {
@@ -9,28 +10,30 @@ struct PlayerHomeView: View {
     @State private var isFileImporterPresented = false
 
     var body: some View {
-        ZStack {
-            appBackground
+        NavigationStack {
+            GeometryReader { geometry in
+                let isLandscapeVideoMode = geometry.size.width > geometry.size.height && viewModel.hasVideo
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    header
-
-                    if viewModel.hasVideo {
-                        videoArea
-                        playbackPanel
+                Group {
+                    if isLandscapeVideoMode {
+                        landscapePlayer
                     } else {
-                        emptyState
+                        portraitContent
                     }
-
-                    recentList
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
             }
-            .scrollIndicators(.hidden)
+            .navigationTitle("MP4 Player")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isFileImporterPresented = true
+                    } label: {
+                        Image(systemName: "folder")
+                    }
+                    .accessibilityLabel("動画を選択")
+                }
+            }
         }
         .fileImporter(
             isPresented: $isFileImporterPresented,
@@ -38,7 +41,7 @@ struct PlayerHomeView: View {
             allowsMultipleSelection: false,
             onCompletion: handleFileImport
         )
-        .alert("Could not open video", isPresented: Binding(
+        .alert("動画を開けませんでした", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
             set: { if !$0 { viewModel.errorMessage = nil } }
         )) {
@@ -56,52 +59,39 @@ struct PlayerHomeView: View {
         }
     }
 
-    private var appBackground: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.77, green: 0.88, blue: 1.00),
-                Color(red: 0.96, green: 0.97, blue: 1.00),
-                Color(red: 0.87, green: 0.96, blue: 0.93)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .overlay {
-            LinearGradient(
-                colors: [
-                    .white.opacity(0.52),
-                    .white.opacity(0.18),
-                    .clear
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+    private var portraitContent: some View {
+        List {
+            if viewModel.hasVideo {
+                Section {
+                    videoArea
+                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+                        .listRowBackground(Color.clear)
+                }
+            } else {
+                openVideoSection
+            }
+
+            recentList
         }
-        .ignoresSafeArea()
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("MP4 AirPlay")
-                    .font(.title3.weight(.semibold))
-                Text("Local MP4 playback")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+    private var landscapePlayer: some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
 
-            Spacer()
+            VideoPlayer(player: viewModel.player)
+                .ignoresSafeArea()
 
-            Button {
-                isFileImporterPresented = true
-            } label: {
-                Label("Open Video", systemImage: "folder")
-                    .labelStyle(.iconOnly)
-                    .frame(width: 40, height: 40)
+            if viewModel.isLoading {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(1.3)
             }
-            .buttonStyle(.glassProminent)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private var videoArea: some View {
@@ -115,183 +105,46 @@ struct PlayerHomeView: View {
                     .tint(.white)
                     .scaleEffect(1.3)
             }
-
-            VStack {
-                HStack {
-                    statusBadge
-                    Spacer()
-                }
-                Spacer()
-            }
-            .padding(12)
         }
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(.white.opacity(0.45), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: "play.rectangle.fill")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
-                    .background(
-                        LinearGradient(
-                            colors: [.blue, .cyan],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    )
-                    .shadow(color: .blue.opacity(0.24), radius: 10, y: 4)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Open an MP4")
-                        .font(.headline)
-
-                    Text("Choose a local video from Files.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-            }
-
+    private var openVideoSection: some View {
+        Section {
             Button {
                 isFileImporterPresented = true
             } label: {
-                Label("Open Video", systemImage: "folder")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 46)
+                Label("動画を選択", systemImage: "folder")
             }
-            .buttonStyle(.glassProminent)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity)
-        .glassCard(cornerRadius: 12)
-    }
-
-    private var statusBadge: some View {
-        Label(
-            viewModel.isAirPlayActive ? "AirPlay Connected" : "Local Playback",
-            systemImage: viewModel.isAirPlayActive ? "airplayvideo.circle.fill" : "iphone"
-        )
-        .font(.caption)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(.white.opacity(0.45), lineWidth: 1)
         }
     }
 
-    private var playbackPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(viewModel.title)
-                        .font(.headline)
-                        .lineLimit(1)
-
-                    Text(viewModel.isAirPlayActive ? "AirPlay Connected" : "Ready to play")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                AirPlayRouteButton()
-                    .frame(width: 44, height: 44)
-            }
-
-            HStack(spacing: 22) {
-                Button {
-                    viewModel.skip(seconds: -10)
-                } label: {
-                    Label("10 seconds back", systemImage: "gobackward.10")
-                }
-                .labelStyle(.iconOnly)
-                .frame(width: 42, height: 42)
-                .buttonStyle(.glass)
-
-                Button {
-                    viewModel.playPause()
-                } label: {
-                    Label(viewModel.isPlaying ? "Pause" : "Play", systemImage: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                        .labelStyle(.iconOnly)
-                        .frame(width: 54, height: 42)
-                }
-                .buttonStyle(.glassProminent)
-
-                Button {
-                    viewModel.skip(seconds: 10)
-                } label: {
-                    Label("10 seconds forward", systemImage: "goforward.10")
-                }
-                .labelStyle(.iconOnly)
-                .frame(width: 42, height: 42)
-                .buttonStyle(.glass)
-            }
-            .frame(maxWidth: .infinity)
-            .font(.title3)
-        }
-        .padding(14)
-        .glassCard()
-    }
-
+    @ViewBuilder
     private var recentList: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recent")
-                .font(.headline)
-
+        Section("最近開いた動画") {
             if recentStore.videos.isEmpty {
-                Label("No recent videos", systemImage: "clock")
-                    .font(.subheadline)
+                Text("まだありません")
                     .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
             } else {
-                LazyVStack(spacing: 8) {
-                    ForEach(recentStore.videos) { video in
-                        Button {
-                            openRecent(video)
-                        } label: {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(video.title)
-                                        .font(.body)
-                                        .lineLimit(1)
-
-                                    if video.lastPosition > 0 {
-                                        Text("Resume at \(formatTime(video.lastPosition))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "play.circle")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .glassCard(cornerRadius: 8, material: .thinMaterial)
+                ForEach(recentStore.videos) { video in
+                    Button {
+                        openRecent(video)
+                    } label: {
+                        Label {
+                            Text(video.title)
+                                .lineLimit(1)
+                        } icon: {
+                            Image(systemName: "film")
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .buttonStyle(.plain)
                 }
+                .onDelete(perform: deleteRecent)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func handleFileImport(_ result: Result<[URL], Error>) {
@@ -300,12 +153,16 @@ struct PlayerHomeView: View {
             guard let url = urls.first else { return }
             do {
                 let recent = try recentStore.addOrUpdate(url: url)
-                viewModel.open(url: url, recentVideoID: recent.id)
+                let storedURL = try recentStore.resolveURL(for: recent)
+                viewModel.open(url: storedURL, recentVideoID: recent.id)
             } catch {
-                viewModel.setError("The selected file could not be saved for recent playback.")
+                viewModel.setError("選択したファイルを取り込めませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }
-        case .failure:
-            viewModel.setError("The selected file could not be opened.")
+        case .failure(let error):
+            if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
+                return
+            }
+            viewModel.setError("選択したファイルを開けませんでした。")
         }
     }
 
@@ -314,78 +171,22 @@ struct PlayerHomeView: View {
             let url = try recentStore.resolveURL(for: video)
             viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id)
         } catch {
-            viewModel.setError("The recent file is no longer available. Open it again from Files.")
+            viewModel.setError("この動画はもう利用できません。もう一度ファイルAppから選択してください。")
         }
     }
 
-    private func formatTime(_ seconds: TimeInterval) -> String {
-        let totalSeconds = Int(seconds)
-        let minutes = totalSeconds / 60
-        let remainingSeconds = totalSeconds % 60
-        return String(format: "%d:%02d", minutes, remainingSeconds)
+    private func deleteRecent(at offsets: IndexSet) {
+        let videos = recentStore.videos
+        offsets
+            .compactMap { videos.indices.contains($0) ? videos[$0] : nil }
+            .forEach { video in
+                let isCurrentVideo = viewModel.currentRecentVideoID == video.id
+                recentStore.remove(video, keepingStoredFile: isCurrentVideo)
+            }
     }
 }
 
 #Preview {
     PlayerHomeView()
         .environmentObject(RecentVideoStore())
-}
-
-private extension View {
-    func glassCard(cornerRadius: CGFloat = 8, material: Material = .regularMaterial) -> some View {
-        background(material, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(.white.opacity(0.5), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.08), radius: 14, y: 6)
-    }
-}
-
-private struct GlassButtonStyle: ButtonStyle {
-    var isProminent = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(isProminent ? .white : .primary)
-            .background {
-                background
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(.white.opacity(isProminent ? 0.32 : 0.55), lineWidth: 1)
-            }
-            .shadow(
-                color: isProminent ? .blue.opacity(0.24) : .black.opacity(0.08),
-                radius: configuration.isPressed ? 4 : 10,
-                y: configuration.isPressed ? 2 : 5
-            )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.easeOut(duration: 0.16), value: configuration.isPressed)
-    }
-
-    @ViewBuilder
-    private var background: some View {
-        if isProminent {
-            LinearGradient(
-                colors: [Color.blue, Color.cyan],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        } else {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-        }
-    }
-}
-
-private extension ButtonStyle where Self == GlassButtonStyle {
-    static var glass: GlassButtonStyle {
-        GlassButtonStyle()
-    }
-
-    static var glassProminent: GlassButtonStyle {
-        GlassButtonStyle(isProminent: true)
-    }
 }

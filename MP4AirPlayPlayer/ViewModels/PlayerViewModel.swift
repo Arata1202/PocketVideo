@@ -6,27 +6,20 @@ import SwiftUI
 @MainActor
 final class PlayerViewModel: ObservableObject {
     @Published var player = AVPlayer()
-    @Published var title = "No Video"
     @Published var hasVideo = false
     @Published var isLoading = false
-    @Published var isPlaying = false
     @Published var errorMessage: String?
-    @Published var isAirPlayActive = false
     @Published var currentRecentVideoID: RecentVideo.ID?
 
     private var timeObserver: Any?
-    private var timeControlObserver: NSKeyValueObservation?
-    private var routeObserver: NSObjectProtocol?
     private var playbackEndObserver: NSObjectProtocol?
     private var scopedURL: URL?
     private weak var recentStore: RecentVideoStore?
 
     init() {
+        player.allowsExternalPlayback = true
         configureAudioSession()
-        observePlaybackState()
-        addRouteObserver()
         addPlaybackEndObserver()
-        updateAirPlayState()
     }
 
     deinit {
@@ -35,9 +28,6 @@ final class PlayerViewModel: ObservableObject {
                 player.removeTimeObserver(timeObserver)
             }
             stopSecurityScopedAccess()
-            if let routeObserver {
-                NotificationCenter.default.removeObserver(routeObserver)
-            }
             if let playbackEndObserver {
                 NotificationCenter.default.removeObserver(playbackEndObserver)
             }
@@ -57,7 +47,6 @@ final class PlayerViewModel: ObservableObject {
             scopedURL = url
         }
 
-        title = url.lastPathComponent
         hasVideo = true
         currentRecentVideoID = recentVideoID
 
@@ -71,27 +60,6 @@ final class PlayerViewModel: ObservableObject {
 
         addPeriodicTimeObserver()
         isLoading = false
-    }
-
-    func playPause() {
-        guard hasVideo else { return }
-
-        if isPlaying {
-            player.pause()
-            isPlaying = false
-        } else {
-            player.play()
-            isPlaying = true
-        }
-    }
-
-    func skip(seconds: Double) {
-        guard hasVideo else { return }
-
-        let current = player.currentTime().seconds
-        guard current.isFinite else { return }
-        let next = max(current + seconds, 0)
-        player.seek(to: CMTime(seconds: next, preferredTimescale: 600))
     }
 
     func saveCurrentPosition() {
@@ -124,33 +92,13 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func observePlaybackState() {
-        timeControlObserver = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
-            let isPlaying = player.timeControlStatus == .playing
-            Task { @MainActor in
-                self?.isPlaying = isPlaying
-            }
-        }
-    }
-
     private func configureAudioSession() {
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            errorMessage = "Audio session setup failed."
-        }
-    }
-
-    private func addRouteObserver() {
-        routeObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.updateAirPlayState()
-            }
+            // Playback can still be attempted even if the session is not ready at launch.
+            // File-open errors are the only failures surfaced through the video alert.
         }
     }
 
@@ -161,15 +109,8 @@ final class PlayerViewModel: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.isPlaying = false
                 self?.saveCurrentPosition()
             }
-        }
-    }
-
-    private func updateAirPlayState() {
-        isAirPlayActive = AVAudioSession.sharedInstance().currentRoute.outputs.contains { output in
-            output.portType == .airPlay
         }
     }
 }
