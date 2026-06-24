@@ -1,6 +1,5 @@
 import AVKit
 import SwiftUI
-import UIKit
 import UniformTypeIdentifiers
 
 struct PlayerHomeView: View {
@@ -82,12 +81,22 @@ struct PlayerHomeView: View {
     }
 
     private var landscapePlayer: some View {
+        playerSurface
+            .ignoresSafeArea()
+    }
+
+    private var videoArea: some View {
+        playerSurface
+            .aspectRatio(4.0 / 3.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var playerSurface: some View {
         ZStack {
             Color.black
-                .ignoresSafeArea()
 
-            PlayerView(player: viewModel.player, showsPlaybackControls: true)
-                .ignoresSafeArea()
+            PlayerView(player: viewModel.player)
 
             if viewModel.isLoading {
                 ProgressView()
@@ -95,88 +104,7 @@ struct PlayerHomeView: View {
                     .scaleEffect(1.3)
             }
         }
-    }
-
-    private var videoArea: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Color.black
-
-                PlayerView(player: viewModel.player, showsPlaybackControls: false)
-
-                if viewModel.isLoading {
-                    ProgressView()
-                        .tint(.white)
-                        .scaleEffect(1.3)
-                }
-            }
-            .aspectRatio(4.0 / 3.0, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            portraitPlaybackControls
-        }
-    }
-
-    private var portraitPlaybackControls: some View {
-        VStack(spacing: 10) {
-            Slider(
-                value: Binding(
-                    get: { viewModel.currentTime },
-                    set: { viewModel.seek(to: $0) }
-                ),
-                in: 0...max(viewModel.duration, 1)
-            )
-            .disabled(viewModel.duration <= 0)
-
-            HStack {
-                Text(formatTime(viewModel.currentTime))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                Text(formatTime(viewModel.duration))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-            .font(.caption)
-
-            HStack(spacing: 24) {
-                AirPlayRoutePicker()
-                    .frame(width: 32, height: 32)
-
-                Button {
-                    viewModel.seek(by: -10)
-                } label: {
-                    Image(systemName: "gobackward.10")
-                        .font(.title3)
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!viewModel.hasVideo)
-
-                Button {
-                    viewModel.togglePlayback()
-                } label: {
-                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.title2)
-                        .frame(width: 52, height: 52)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!viewModel.hasVideo)
-
-                Button {
-                    viewModel.seek(by: 10)
-                } label: {
-                    Image(systemName: "goforward.10")
-                        .font(.title3)
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!viewModel.hasVideo)
-            }
-        }
+        .background(Color.black)
     }
 
     private var openVideoSection: some View {
@@ -256,52 +184,24 @@ struct PlayerHomeView: View {
         let isCurrentVideo = viewModel.currentRecentVideoID == video.id
         recentStore.remove(video, keepingStoredFile: isCurrentVideo)
     }
-
-    private func formatTime(_ seconds: TimeInterval) -> String {
-        guard seconds.isFinite && seconds > 0 else { return "0:00" }
-
-        let totalSeconds = Int(seconds)
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let seconds = totalSeconds % 60
-
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-
-        return String(format: "%d:%02d", minutes, seconds)
-    }
 }
 
 private struct PlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
-    let showsPlaybackControls: Bool
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = player
         controller.videoGravity = .resizeAspect
         controller.allowsPictureInPicturePlayback = true
-        controller.showsPlaybackControls = showsPlaybackControls
+        controller.showsPlaybackControls = true
         return controller
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         controller.player = player
-        controller.showsPlaybackControls = showsPlaybackControls
+        controller.showsPlaybackControls = true
     }
-}
-
-private struct AirPlayRoutePicker: UIViewRepresentable {
-    func makeUIView(context: Context) -> AVRoutePickerView {
-        let view = AVRoutePickerView()
-        view.prioritizesVideoDevices = true
-        view.tintColor = .systemBlue
-        view.activeTintColor = .systemBlue
-        return view
-    }
-
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
 #Preview {

@@ -9,10 +9,10 @@ It focuses on opening local video files from Files, playing them on iPhone or iP
 - Open local MP4 files from Files.
 - Play videos on iPhone and iPad.
 - Send playback to AirPlay devices.
-- Use basic playback controls, including play/pause and 10-second skip.
+- Use the native Apple video player controls.
 - Resume recently opened videos.
-- Show AirPlay connection status.
-- Use a portrait-first layout on iPhone.
+- Manage recently opened videos.
+- Preserve the original aspect ratio for older 4:3 DVD-sourced videos.
 
 ## Requirements
 

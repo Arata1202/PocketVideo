@@ -10,9 +10,6 @@ final class PlayerViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var currentRecentVideoID: RecentVideo.ID?
-    @Published var isPlaying = false
-    @Published var currentTime: TimeInterval = 0
-    @Published var duration: TimeInterval = 0
 
     private var timeObserver: Any?
     private var playbackEndObserver: NSObjectProtocol?
@@ -53,9 +50,6 @@ final class PlayerViewModel: ObservableObject {
 
         hasVideo = true
         currentRecentVideoID = recentVideoID
-        currentTime = 0
-        duration = 0
-        isPlaying = false
         lastPositionSaveAt = .distantPast
 
         let item = AVPlayerItem(url: url)
@@ -68,27 +62,6 @@ final class PlayerViewModel: ObservableObject {
 
         addPeriodicTimeObserver()
         isLoading = false
-    }
-
-    func togglePlayback() {
-        if isPlaying {
-            player.pause()
-            isPlaying = false
-        } else {
-            player.play()
-            isPlaying = true
-        }
-    }
-
-    func seek(by seconds: TimeInterval) {
-        let targetSeconds = max(0, min(currentTime + seconds, duration))
-        seek(to: targetSeconds)
-    }
-
-    func seek(to seconds: TimeInterval) {
-        let time = CMTime(seconds: seconds, preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
-        currentTime = seconds
     }
 
     func saveCurrentPosition() {
@@ -117,27 +90,12 @@ final class PlayerViewModel: ObservableObject {
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.syncPlaybackState()
                 if Date().timeIntervalSince(self.lastPositionSaveAt) >= 5 {
                     self.saveCurrentPosition()
                     self.lastPositionSaveAt = Date()
                 }
             }
         }
-    }
-
-    private func syncPlaybackState() {
-        let seconds = player.currentTime().seconds
-        if seconds.isFinite {
-            currentTime = seconds
-        }
-
-        let itemDuration = player.currentItem?.duration.seconds ?? 0
-        if itemDuration.isFinite {
-            duration = itemDuration
-        }
-
-        isPlaying = player.timeControlStatus == .playing
     }
 
     private func configureAudioSession() {
@@ -157,7 +115,6 @@ final class PlayerViewModel: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.isPlaying = false
                 self?.saveCurrentPosition()
             }
         }
