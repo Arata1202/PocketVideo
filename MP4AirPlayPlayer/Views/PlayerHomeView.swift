@@ -24,14 +24,17 @@ struct PlayerHomeView: View {
                 .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
             }
             .navigationTitle("MP4 Player")
+            .navigationBarTitleDisplayMode(viewModel.hasVideo ? .inline : .large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isFileImporterPresented = true
-                    } label: {
-                        Image(systemName: "folder")
+                    if viewModel.hasVideo {
+                        Button {
+                            isFileImporterPresented = true
+                        } label: {
+                            Image(systemName: "folder")
+                        }
+                        .accessibilityLabel("動画を選択")
                     }
-                    .accessibilityLabel("動画を選択")
                 }
             }
         }
@@ -83,7 +86,7 @@ struct PlayerHomeView: View {
             Color.black
                 .ignoresSafeArea()
 
-            VideoPlayer(player: viewModel.player)
+            PlayerView(player: viewModel.player, showsPlaybackControls: true)
                 .ignoresSafeArea()
 
             if viewModel.isLoading {
@@ -95,20 +98,85 @@ struct PlayerHomeView: View {
     }
 
     private var videoArea: some View {
-        ZStack {
-            Color.black
+        VStack(spacing: 12) {
+            ZStack {
+                Color.black
 
-            VideoPlayer(player: viewModel.player)
+                PlayerView(player: viewModel.player, showsPlaybackControls: false)
 
-            if viewModel.isLoading {
-                ProgressView()
-                    .tint(.white)
-                    .scaleEffect(1.3)
+                if viewModel.isLoading {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(1.3)
+                }
+            }
+            .aspectRatio(4.0 / 3.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            portraitPlaybackControls
+        }
+    }
+
+    private var portraitPlaybackControls: some View {
+        VStack(spacing: 10) {
+            Slider(
+                value: Binding(
+                    get: { viewModel.currentTime },
+                    set: { viewModel.seek(to: $0) }
+                ),
+                in: 0...max(viewModel.duration, 1)
+            )
+            .disabled(viewModel.duration <= 0)
+
+            HStack {
+                Text(formatTime(viewModel.currentTime))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(formatTime(viewModel.duration))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+
+            HStack(spacing: 24) {
+                AirPlayRoutePicker()
+                    .frame(width: 32, height: 32)
+
+                Button {
+                    viewModel.seek(by: -10)
+                } label: {
+                    Image(systemName: "gobackward.10")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.hasVideo)
+
+                Button {
+                    viewModel.togglePlayback()
+                } label: {
+                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.title2)
+                        .frame(width: 52, height: 52)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.hasVideo)
+
+                Button {
+                    viewModel.seek(by: 10)
+                } label: {
+                    Image(systemName: "goforward.10")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.hasVideo)
             }
         }
-        .aspectRatio(16.0 / 9.0, contentMode: .fit)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var openVideoSection: some View {
@@ -132,17 +200,26 @@ struct PlayerHomeView: View {
                     Button {
                         openRecent(video)
                     } label: {
-                        Label {
-                            Text(video.title)
-                                .lineLimit(1)
-                        } icon: {
+                        HStack(spacing: 12) {
                             Image(systemName: "film")
                                 .foregroundStyle(.secondary)
+
+                            Text(video.title)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            deleteRecent(video)
+                        } label: {
+                            Label("削除", systemImage: "trash")
+                        }
+                    }
                 }
-                .onDelete(perform: deleteRecent)
             }
         }
     }
@@ -175,15 +252,56 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func deleteRecent(at offsets: IndexSet) {
-        let videos = recentStore.videos
-        offsets
-            .compactMap { videos.indices.contains($0) ? videos[$0] : nil }
-            .forEach { video in
-                let isCurrentVideo = viewModel.currentRecentVideoID == video.id
-                recentStore.remove(video, keepingStoredFile: isCurrentVideo)
-            }
+    private func deleteRecent(_ video: RecentVideo) {
+        let isCurrentVideo = viewModel.currentRecentVideoID == video.id
+        recentStore.remove(video, keepingStoredFile: isCurrentVideo)
     }
+
+    private func formatTime(_ seconds: TimeInterval) -> String {
+        guard seconds.isFinite && seconds > 0 else { return "0:00" }
+
+        let totalSeconds = Int(seconds)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+private struct PlayerView: UIViewControllerRepresentable {
+    let player: AVPlayer
+    let showsPlaybackControls: Bool
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.videoGravity = .resizeAspect
+        controller.allowsPictureInPicturePlayback = true
+        controller.showsPlaybackControls = showsPlaybackControls
+        return controller
+    }
+
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        controller.player = player
+        controller.showsPlaybackControls = showsPlaybackControls
+    }
+}
+
+private struct AirPlayRoutePicker: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let view = AVRoutePickerView()
+        view.prioritizesVideoDevices = true
+        view.tintColor = .systemBlue
+        view.activeTintColor = .systemBlue
+        return view
+    }
+
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
 #Preview {
