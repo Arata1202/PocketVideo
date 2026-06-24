@@ -297,11 +297,13 @@ private struct SettingsView: View {
             }
         }
         .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
-        .confirmationDialog("履歴をすべて削除しますか？", isPresented: $isClearRecentConfirmationPresented, titleVisibility: .visible) {
+        .alert("履歴をすべて削除しますか？", isPresented: $isClearRecentConfirmationPresented) {
+            Button("キャンセル", role: .cancel) {}
             Button("削除", role: .destructive) {
                 recentStore.removeAll()
             }
-            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("最近開いた動画の履歴だけを削除します。元の動画ファイルは削除されません。")
         }
     }
 
