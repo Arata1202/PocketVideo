@@ -134,6 +134,16 @@ struct PlayerHomeView: View {
             } label: {
                 Label("動画を選択", systemImage: "folder")
             }
+            .disabled(viewModel.isLoading)
+
+            if viewModel.isLoading {
+                HStack(spacing: 10) {
+                    ProgressView()
+
+                    Text("動画を準備中")
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -160,6 +170,7 @@ struct PlayerHomeView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(viewModel.isLoading)
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
                             deleteRecent(video)
