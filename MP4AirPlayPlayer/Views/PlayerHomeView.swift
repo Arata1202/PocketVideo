@@ -25,6 +25,8 @@ struct PlayerHomeView: View {
             }
             .navigationTitle(viewModel.currentVideoTitle ?? "MP4 Player")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if viewModel.hasVideo {
