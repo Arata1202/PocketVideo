@@ -98,7 +98,7 @@ struct PlayerHomeView: View {
 
                     recentList
                 }
-                .listStyle(.plain)
+                .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
             } else {
                 List {
