@@ -17,7 +17,7 @@ struct PlayerHomeView: View {
                     if isLandscapeVideoMode {
                         landscapePlayer
                     } else {
-                        portraitContent
+                        portraitContent(in: geometry)
                     }
                 }
                 .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
@@ -61,22 +61,27 @@ struct PlayerHomeView: View {
         }
     }
 
-    private var portraitContent: some View {
-        List {
+    private func portraitContent(in geometry: GeometryProxy) -> some View {
+        Group {
             if viewModel.hasVideo {
-                Section {
-                    videoArea
-                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                        .listRowBackground(Color.clear)
+                VStack(spacing: 0) {
+                    videoArea(in: geometry)
+
+                    List {
+                        recentList
+                    }
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                 }
             } else {
-                openVideoSection
+                List {
+                    openVideoSection
+                    recentList
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
             }
-
-            recentList
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
     }
 
@@ -85,11 +90,15 @@ struct PlayerHomeView: View {
             .ignoresSafeArea()
     }
 
-    private var videoArea: some View {
-        playerSurface
-            .aspectRatio(4.0 / 3.0, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    private func videoArea(in geometry: GeometryProxy) -> some View {
+        let aspectRatio = min(max(viewModel.videoAspectRatio ?? (16.0 / 9.0), 0.45), 2.4)
+        let fullWidth = geometry.size.width
+        let naturalHeight = fullWidth / aspectRatio
+        let maxHeight = geometry.size.height * 0.72
+        let height = min(max(naturalHeight, 180), maxHeight)
+
+        return playerSurface
+            .frame(width: fullWidth, height: height)
     }
 
     private var playerSurface: some View {
