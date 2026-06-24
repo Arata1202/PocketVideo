@@ -12,6 +12,7 @@ It focuses on opening local video files from Files, playing them on iPhone or iP
 - Use the native Apple video player controls.
 - Resume recently opened videos.
 - Manage recently opened videos.
+- Show stable thumbnails for recently opened videos.
 - Preserve the original video aspect ratio.
 - Adapt the player layout for portrait, landscape, and vertical videos.
 
