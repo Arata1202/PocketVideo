@@ -13,6 +13,7 @@ final class PlayerViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var currentRecentVideoID: RecentVideo.ID?
     @Published var currentVideoTitle: String?
+    @Published var currentPlaybackPosition: TimeInterval = 0
     @Published var videoAspectRatio: CGFloat?
 
     private var timeObserver: Any?
@@ -66,6 +67,7 @@ final class PlayerViewModel: ObservableObject {
 
         currentRecentVideoID = recentVideoID
         currentVideoTitle = displayTitle ?? url.lastPathComponent
+        currentPlaybackPosition = resumePosition
         lastPositionSaveAt = .distantPast
 
         let asset = AVURLAsset(url: url)
@@ -115,6 +117,7 @@ final class PlayerViewModel: ObservableObject {
         showsLoadingIndicator = false
         currentRecentVideoID = nil
         currentVideoTitle = nil
+        currentPlaybackPosition = 0
         videoAspectRatio = nil
         lastPositionSaveAt = .distantPast
         clearNowPlayingInfo()
@@ -125,6 +128,7 @@ final class PlayerViewModel: ObservableObject {
         guard let id = currentRecentVideoID else { return }
         let seconds = player.currentTime().seconds
         guard seconds.isFinite else { return }
+        currentPlaybackPosition = seconds
         recentStore?.updatePosition(for: id, position: seconds)
     }
 
@@ -254,10 +258,11 @@ final class PlayerViewModel: ObservableObject {
     private func addPeriodicTimeObserver() {
         removePeriodicTimeObserver()
 
-        let interval = CMTime(seconds: 5, preferredTimescale: 600)
+        let interval = CMTime(seconds: 1, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                self.updateCurrentPlaybackPosition()
                 if Date().timeIntervalSince(self.lastPositionSaveAt) >= 5 {
                     self.saveCurrentPosition()
                     self.lastPositionSaveAt = Date()
@@ -265,6 +270,12 @@ final class PlayerViewModel: ObservableObject {
                 self.updateNowPlayingInfo()
             }
         }
+    }
+
+    private func updateCurrentPlaybackPosition() {
+        let seconds = player.currentTime().seconds
+        guard seconds.isFinite else { return }
+        currentPlaybackPosition = seconds
     }
 
     private func removePeriodicTimeObserver() {

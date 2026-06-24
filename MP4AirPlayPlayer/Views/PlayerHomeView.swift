@@ -172,8 +172,8 @@ struct PlayerHomeView: View {
                                     .lineLimit(1)
                                     .truncationMode(.middle)
 
-                                if let resumeText = resumeText(for: video.lastPosition) {
-                                    Text(resumeText)
+                                if let playbackText = playbackText(for: video) {
+                                    Text(playbackText)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -226,6 +226,14 @@ struct PlayerHomeView: View {
 
     private func deleteRecent(_ video: RecentVideo) {
         recentStore.remove(video)
+    }
+
+    private func playbackText(for video: RecentVideo) -> String? {
+        if viewModel.hasVideo, video.id == viewModel.currentRecentVideoID {
+            return "再生中 \(formatDuration(viewModel.currentPlaybackPosition))"
+        }
+
+        return resumeText(for: video.lastPosition)
     }
 
     private func resumeText(for position: TimeInterval) -> String? {
