@@ -3,7 +3,7 @@
 ## Branding
 
 - Review the generated `Pocket Video` AppIcon on a real device home screen.
-- Review the launch screen timing and appearance on a real device.
+- Review the light/dark launch screen timing and appearance on a real device.
 - Verify first launch time after install is short enough.
 - Prepare App Store subtitle and Japanese description.
 
