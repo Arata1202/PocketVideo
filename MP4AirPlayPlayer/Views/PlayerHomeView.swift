@@ -160,31 +160,37 @@ struct PlayerHomeView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(recentStore.videos) { video in
-                    HStack(spacing: 12) {
-                        Image(systemName: "film")
-                            .foregroundStyle(.secondary)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(video.title)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-
-                            if let playbackText = playbackText(for: video) {
-                                Text(playbackText)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    Button {
                         openRecent(video)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "film")
+                                .foregroundStyle(.secondary)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(video.title)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+
+                                if let playbackText = playbackText(for: video) {
+                                    Text(playbackText)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(.isButton)
+                    .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            deleteRecent(video)
+                        } label: {
+                            Label("削除", systemImage: "trash")
+                        }
+                    }
                 }
-                .onDelete(perform: deleteRecent)
             }
         }
     }
@@ -218,10 +224,8 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func deleteRecent(at offsets: IndexSet) {
-        offsets
-            .map { recentStore.videos[$0] }
-            .forEach(recentStore.remove)
+    private func deleteRecent(_ video: RecentVideo) {
+        recentStore.remove(video)
     }
 
     private func playbackText(for video: RecentVideo) -> String? {
