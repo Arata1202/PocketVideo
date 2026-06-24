@@ -11,53 +11,29 @@ struct PlayerHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel = PlayerViewModel()
     @State private var isFileImporterPresented = false
+    @State private var isPlayerPresented = false
     @State private var isSettingsPresented = false
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geometry in
-                let isLandscapeVideoMode = geometry.size.width > geometry.size.height && viewModel.hasVideo
-
-                Group {
-                    if isLandscapeVideoMode {
-                        landscapePlayer
-                    } else {
-                        portraitContent(in: geometry)
+            homeContent
+                .navigationTitle("Pocket Video")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+                .toolbar {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        toolbarButtons
                     }
                 }
-                .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
-            }
-            .navigationTitle(viewModel.currentVideoTitle ?? "Pocket Video")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if viewModel.hasVideo {
-                        Button {
-                            viewModel.closeCurrentVideo()
-                        } label: {
-                            Label("ホーム", systemImage: "chevron.left")
+                .navigationDestination(isPresented: $isPlayerPresented) {
+                    playerContent
+                        .onDisappear {
+                            if !isPlayerPresented {
+                                viewModel.closeCurrentVideo()
+                            }
                         }
-                    }
                 }
-
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        isFileImporterPresented = true
-                    } label: {
-                        Image(systemName: "folder")
-                    }
-                    .accessibilityLabel("動画を選択")
-
-                    Button {
-                        isSettingsPresented = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("設定")
-                }
-            }
         }
         .sheet(isPresented: $isSettingsPresented) {
             SettingsView()
@@ -87,29 +63,66 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func portraitContent(in geometry: GeometryProxy) -> some View {
-        Group {
-            if viewModel.hasVideo {
-                List {
-                    videoArea(in: geometry)
-                        .listRowInsets(EdgeInsets())
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.black)
+    private var homeContent: some View {
+        List {
+            openVideoSection
+            recentList
+        }
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
 
-                    recentList
+    private var playerContent: some View {
+        GeometryReader { geometry in
+            let isLandscapeVideoMode = geometry.size.width > geometry.size.height
+
+            Group {
+                if isLandscapeVideoMode {
+                    landscapePlayer
+                } else {
+                    List {
+                        videoArea(in: geometry)
+                            .listRowInsets(EdgeInsets())
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.black)
+
+                        recentList
+                    }
+                    .listStyle(.inset)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(uiColor: .systemGroupedBackground))
                 }
-                .listStyle(.inset)
-                .scrollContentBackground(.hidden)
-            } else {
-                List {
-                    openVideoSection
-                    recentList
-                }
-                .listStyle(.inset)
-                .scrollContentBackground(.hidden)
+            }
+            .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
+        }
+        .navigationTitle(viewModel.currentVideoTitle ?? "Pocket Video")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                toolbarButtons
             }
         }
-        .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    private var toolbarButtons: some View {
+        Group {
+            Button {
+                isFileImporterPresented = true
+            } label: {
+                Image(systemName: "folder")
+            }
+            .accessibilityLabel("動画を選択")
+
+            Button {
+                isSettingsPresented = true
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .accessibilityLabel("設定")
+        }
     }
 
     private var landscapePlayer: some View {
@@ -197,6 +210,7 @@ struct PlayerHomeView: View {
                 let recent = try recentStore.addOrUpdate(url: url)
                 let storedURL = try recentStore.resolveURL(for: recent)
                 viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
+                isPlayerPresented = true
             } catch {
                 viewModel.setError("選択したファイルを開けませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }
@@ -212,6 +226,7 @@ struct PlayerHomeView: View {
         do {
             let url = try recentStore.resolveURL(for: video)
             viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id, displayTitle: video.title)
+            isPlayerPresented = true
         } catch {
             recentStore.remove(video)
             viewModel.setError("この動画はもう利用できません。履歴から削除しました。もう一度ファイルAppから選択してください。")
