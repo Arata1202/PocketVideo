@@ -319,6 +319,15 @@ private struct PlayerView: UIViewControllerRepresentable {
             isPictureInPictureActive = false
         }
 
+        func playerViewController(
+            _ playerViewController: AVPlayerViewController,
+            willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
+        ) {
+            coordinator.animate(alongsideTransition: nil) { _ in
+                playerViewController.player?.play()
+            }
+        }
+
         private func stopPictureInPictureWhenReturningToApp() {
             guard isPictureInPictureActive, let controller else { return }
 
