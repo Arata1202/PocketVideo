@@ -46,6 +46,11 @@ final class RecentVideoStore: ObservableObject {
         save()
     }
 
+    func removeAll() {
+        videos.removeAll()
+        save()
+    }
+
     func resolveURL(for video: RecentVideo) throws -> URL {
         var isStale = false
         let url = try URL(

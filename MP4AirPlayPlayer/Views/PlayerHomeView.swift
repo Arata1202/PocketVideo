@@ -61,6 +61,7 @@ struct PlayerHomeView: View {
         }
         .sheet(isPresented: $isSettingsPresented) {
             SettingsView()
+                .environmentObject(recentStore)
         }
         .fileImporter(
             isPresented: $isFileImporterPresented,
@@ -210,7 +211,8 @@ struct PlayerHomeView: View {
             let url = try recentStore.resolveURL(for: video)
             viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id, displayTitle: video.title)
         } catch {
-            viewModel.setError("この動画はもう利用できません。もう一度ファイルAppから選択してください。")
+            recentStore.remove(video)
+            viewModel.setError("この動画はもう利用できません。履歴から削除しました。もう一度ファイルAppから選択してください。")
         }
     }
 
@@ -221,7 +223,9 @@ struct PlayerHomeView: View {
 
 private struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var recentStore: RecentVideoStore
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
+    @State private var isClearRecentConfirmationPresented = false
 
     var body: some View {
         NavigationStack {
@@ -235,6 +239,13 @@ private struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                 }
+
+                Section {
+                    Button("履歴をすべて削除", role: .destructive) {
+                        isClearRecentConfirmationPresented = true
+                    }
+                    .disabled(recentStore.videos.isEmpty)
+                }
             }
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
@@ -247,6 +258,12 @@ private struct SettingsView: View {
             }
         }
         .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
+        .confirmationDialog("履歴をすべて削除しますか？", isPresented: $isClearRecentConfirmationPresented, titleVisibility: .visible) {
+            Button("削除", role: .destructive) {
+                recentStore.removeAll()
+            }
+            Button("キャンセル", role: .cancel) {}
+        }
     }
 }
 

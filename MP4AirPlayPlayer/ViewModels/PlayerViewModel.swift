@@ -16,6 +16,7 @@ final class PlayerViewModel: ObservableObject {
 
     private var timeObserver: Any?
     private var playbackEndObserver: NSObjectProtocol?
+    private var playerItemStatusObservation: NSKeyValueObservation?
     private var aspectRatioLoadTask: Task<Void, Never>?
     private var loadingIndicatorTask: Task<Void, Never>?
     private var scopedURL: URL?
@@ -33,6 +34,7 @@ final class PlayerViewModel: ObservableObject {
             if let timeObserver {
                 player.removeTimeObserver(timeObserver)
             }
+            playerItemStatusObservation?.invalidate()
             aspectRatioLoadTask?.cancel()
             loadingIndicatorTask?.cancel()
             stopSecurityScopedAccess()
@@ -71,6 +73,7 @@ final class PlayerViewModel: ObservableObject {
 
                 let item = AVPlayerItem(asset: asset)
                 self.videoAspectRatio = aspectRatio
+                self.observePlayerItemStatus(item)
                 self.player.replaceCurrentItem(with: item)
 
                 if resumePosition > 0 {
@@ -95,6 +98,8 @@ final class PlayerViewModel: ObservableObject {
         saveCurrentPosition()
         aspectRatioLoadTask?.cancel()
         loadingIndicatorTask?.cancel()
+        playerItemStatusObservation?.invalidate()
+        playerItemStatusObservation = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
         hasVideo = false
@@ -143,6 +148,17 @@ final class PlayerViewModel: ObservableObject {
         isLoading = false
         loadingIndicatorTask?.cancel()
         showsLoadingIndicator = false
+    }
+
+    private func observePlayerItemStatus(_ item: AVPlayerItem) {
+        playerItemStatusObservation?.invalidate()
+        playerItemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+
+            Task { @MainActor in
+                self?.setError("この動画は再生できません。対応拡張子でも、動画のコーデックによっては再生できない場合があります。")
+            }
+        }
     }
 
     private nonisolated static func videoAspectRatio(from asset: AVURLAsset) async -> CGFloat? {
