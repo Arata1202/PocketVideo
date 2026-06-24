@@ -296,7 +296,6 @@ private struct SettingsView: View {
                 }
             }
         }
-        .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
         .alert("履歴をすべて削除しますか？", isPresented: $isClearRecentConfirmationPresented) {
             Button("キャンセル", role: .cancel) {}
             Button("削除", role: .destructive) {

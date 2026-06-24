@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum AppAppearance: String, CaseIterable, Identifiable {
     case system
@@ -18,10 +19,10 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         }
     }
 
-    var colorScheme: ColorScheme? {
+    var userInterfaceStyle: UIUserInterfaceStyle {
         switch self {
         case .system:
-            return nil
+            return .unspecified
         case .light:
             return .light
         case .dark:
@@ -40,7 +41,23 @@ struct MP4AirPlayPlayerApp: App {
             PlayerHomeView()
                 .environmentObject(recentStore)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .preferredColorScheme(AppAppearance(rawValue: appAppearance)?.colorScheme)
+                .onAppear {
+                    applyAppearance()
+                }
+                .onChange(of: appAppearance) { _, _ in
+                    applyAppearance()
+                }
         }
+    }
+
+    private func applyAppearance() {
+        let style = AppAppearance(rawValue: appAppearance)?.userInterfaceStyle ?? .unspecified
+
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .forEach { window in
+                window.overrideUserInterfaceStyle = style
+            }
     }
 }
