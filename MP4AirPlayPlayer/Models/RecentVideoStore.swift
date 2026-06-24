@@ -48,7 +48,12 @@ final class RecentVideoStore: ObservableObject {
 
     func resolveURL(for video: RecentVideo) throws -> URL {
         var isStale = false
-        let url = try resolveBookmarkedURL(for: video, bookmarkDataIsStale: &isStale)
+        let url = try URL(
+            resolvingBookmarkData: video.bookmarkData,
+            options: [],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        )
         if isStale {
             throw RecentVideoStoreError.staleBookmark
         }
@@ -75,28 +80,10 @@ final class RecentVideoStore: ObservableObject {
         }
 
         return try url.bookmarkData(
-            options: [.withSecurityScope],
+            options: [],
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-    }
-
-    private func resolveBookmarkedURL(for video: RecentVideo, bookmarkDataIsStale isStale: inout Bool) throws -> URL {
-        do {
-            return try URL(
-                resolvingBookmarkData: video.bookmarkData,
-                options: [.withSecurityScope],
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
-        } catch {
-            return try URL(
-                resolvingBookmarkData: video.bookmarkData,
-                options: [],
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
-        }
     }
 
     private static func sourceKey(for url: URL) -> String {
