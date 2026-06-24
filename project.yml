@@ -23,8 +23,7 @@ targets:
         CFBundleDisplayName: MP4 Player
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        UILaunchScreen:
-          UIColorName: LaunchBackground
+        UILaunchScreen: {}
         UIUserInterfaceStyle: Light
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
