@@ -9,7 +9,6 @@ private let supportedVideoContentTypes = ["mp4", "mov", "m4v", "3gp", "3g2"]
 struct PlayerHomeView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("isPictureInPictureEnabled") private var isPictureInPictureEnabled = true
     @StateObject private var viewModel = PlayerViewModel()
     @State private var isFileImporterPresented = false
     @State private var isSettingsPresented = false
@@ -131,7 +130,7 @@ struct PlayerHomeView: View {
         ZStack {
             Color.black
 
-            PlayerView(player: viewModel.player, isPictureInPictureEnabled: isPictureInPictureEnabled)
+            PlayerView(player: viewModel.player)
 
             if viewModel.showsLoadingIndicator {
                 ProgressView()
@@ -222,16 +221,11 @@ struct PlayerHomeView: View {
 
 private struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("isPictureInPictureEnabled") private var isPictureInPictureEnabled = true
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
 
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Toggle("Picture in Picture", isOn: $isPictureInPictureEnabled)
-                }
-
                 Section("テーマ") {
                     Picker("テーマ", selection: $appAppearance) {
                         ForEach(AppAppearance.allCases) { appearance in
@@ -258,88 +252,22 @@ private struct SettingsView: View {
 
 private struct PlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
-    let isPictureInPictureEnabled: Bool
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = player
         controller.videoGravity = .resizeAspect
-        controller.allowsPictureInPicturePlayback = isPictureInPictureEnabled
-        controller.canStartPictureInPictureAutomaticallyFromInline = isPictureInPictureEnabled
+        controller.allowsPictureInPicturePlayback = true
+        controller.canStartPictureInPictureAutomaticallyFromInline = true
         controller.showsPlaybackControls = true
-        controller.delegate = context.coordinator
-        context.coordinator.isPictureInPictureEnabled = isPictureInPictureEnabled
-        context.coordinator.attach(to: controller)
         return controller
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         controller.player = player
-        controller.allowsPictureInPicturePlayback = isPictureInPictureEnabled
-        controller.canStartPictureInPictureAutomaticallyFromInline = isPictureInPictureEnabled
+        controller.allowsPictureInPicturePlayback = true
+        controller.canStartPictureInPictureAutomaticallyFromInline = true
         controller.showsPlaybackControls = true
-        controller.delegate = context.coordinator
-        context.coordinator.isPictureInPictureEnabled = isPictureInPictureEnabled
-    }
-
-    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
-        var isPictureInPictureEnabled = true
-
-        private weak var controller: AVPlayerViewController?
-        private var didBecomeActiveObserver: NSObjectProtocol?
-        private var isPictureInPictureActive = false
-
-        deinit {
-            if let didBecomeActiveObserver {
-                NotificationCenter.default.removeObserver(didBecomeActiveObserver)
-            }
-        }
-
-        func attach(to controller: AVPlayerViewController) {
-            self.controller = controller
-
-            guard didBecomeActiveObserver == nil else { return }
-            didBecomeActiveObserver = NotificationCenter.default.addObserver(
-                forName: UIApplication.didBecomeActiveNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                self?.stopPictureInPictureWhenReturningToApp()
-            }
-        }
-
-        func playerViewControllerDidStartPictureInPicture(_ playerViewController: AVPlayerViewController) {
-            isPictureInPictureActive = true
-        }
-
-        func playerViewControllerDidStopPictureInPicture(_ playerViewController: AVPlayerViewController) {
-            isPictureInPictureActive = false
-        }
-
-        func playerViewController(
-            _ playerViewController: AVPlayerViewController,
-            willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
-        ) {
-            coordinator.animate(alongsideTransition: nil) { _ in
-                playerViewController.player?.play()
-            }
-        }
-
-        private func stopPictureInPictureWhenReturningToApp() {
-            guard isPictureInPictureActive, let controller else { return }
-
-            let player = controller.player
-            controller.allowsPictureInPicturePlayback = false
-            DispatchQueue.main.async {
-                controller.allowsPictureInPicturePlayback = self.isPictureInPictureEnabled
-                controller.canStartPictureInPictureAutomaticallyFromInline = self.isPictureInPictureEnabled
-                player?.play()
-            }
-        }
     }
 }
 
