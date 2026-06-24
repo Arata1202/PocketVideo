@@ -10,11 +10,15 @@ final class PlayerViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var currentRecentVideoID: RecentVideo.ID?
+    @Published var currentVideoTitle: String?
+    @Published var videoAspectRatio: CGFloat?
 
     private var timeObserver: Any?
     private var playbackEndObserver: NSObjectProtocol?
+    private var aspectRatioLoadTask: Task<Void, Never>?
     private var scopedURL: URL?
     private weak var recentStore: RecentVideoStore?
+    private var lastPositionSaveAt = Date.distantPast
 
     init() {
         player.allowsExternalPlayback = true
@@ -27,6 +31,7 @@ final class PlayerViewModel: ObservableObject {
             if let timeObserver {
                 player.removeTimeObserver(timeObserver)
             }
+            aspectRatioLoadTask?.cancel()
             stopSecurityScopedAccess()
             if let playbackEndObserver {
                 NotificationCenter.default.removeObserver(playbackEndObserver)
@@ -38,7 +43,7 @@ final class PlayerViewModel: ObservableObject {
         recentStore = store
     }
 
-    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil) {
+    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) {
         isLoading = true
         errorMessage = nil
 
@@ -49,9 +54,13 @@ final class PlayerViewModel: ObservableObject {
 
         hasVideo = true
         currentRecentVideoID = recentVideoID
+        currentVideoTitle = displayTitle ?? url.lastPathComponent
+        lastPositionSaveAt = .distantPast
 
-        let item = AVPlayerItem(url: url)
+        let asset = AVURLAsset(url: url)
+        let item = AVPlayerItem(asset: asset)
         player.replaceCurrentItem(with: item)
+        loadVideoAspectRatio(from: asset)
 
         if resumePosition > 0 {
             let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
@@ -60,6 +69,20 @@ final class PlayerViewModel: ObservableObject {
 
         addPeriodicTimeObserver()
         isLoading = false
+    }
+
+    func closeCurrentVideo() {
+        saveCurrentPosition()
+        aspectRatioLoadTask?.cancel()
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        hasVideo = false
+        isLoading = false
+        currentRecentVideoID = nil
+        currentVideoTitle = nil
+        videoAspectRatio = nil
+        lastPositionSaveAt = .distantPast
+        stopSecurityScopedAccess()
     }
 
     func saveCurrentPosition() {
@@ -79,6 +102,34 @@ final class PlayerViewModel: ObservableObject {
         isLoading = false
     }
 
+    private func loadVideoAspectRatio(from asset: AVURLAsset) {
+        aspectRatioLoadTask?.cancel()
+        aspectRatioLoadTask = Task { [weak self] in
+            do {
+                let tracks = try await asset.loadTracks(withMediaType: .video)
+                guard let track = tracks.first else { return }
+                let naturalSize = try await track.load(.naturalSize)
+                let preferredTransform = try await track.load(.preferredTransform)
+                let transformedSize = naturalSize.applying(preferredTransform)
+                let width = abs(transformedSize.width)
+                let height = abs(transformedSize.height)
+                guard width > 0, height > 0 else { return }
+
+                let aspectRatio = width / height
+                await MainActor.run {
+                    guard let self else { return }
+                    var transaction = Transaction()
+                    transaction.animation = nil
+                    withTransaction(transaction) {
+                        self.videoAspectRatio = aspectRatio
+                    }
+                }
+            } catch {
+                // Keep the previous layout if the asset cannot expose dimensions quickly.
+            }
+        }
+    }
+
     private func addPeriodicTimeObserver() {
         if let timeObserver {
             player.removeTimeObserver(timeObserver)
@@ -87,7 +138,11 @@ final class PlayerViewModel: ObservableObject {
         let interval = CMTime(seconds: 5, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                self?.saveCurrentPosition()
+                guard let self else { return }
+                if Date().timeIntervalSince(self.lastPositionSaveAt) >= 5 {
+                    self.saveCurrentPosition()
+                    self.lastPositionSaveAt = Date()
+                }
             }
         }
     }

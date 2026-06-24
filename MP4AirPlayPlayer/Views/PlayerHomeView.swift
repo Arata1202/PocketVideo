@@ -18,13 +18,24 @@ struct PlayerHomeView: View {
                     if isLandscapeVideoMode {
                         landscapePlayer
                     } else {
-                        portraitContent
+                        portraitContent(in: geometry)
                     }
                 }
                 .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
             }
-            .navigationTitle("MP4 Player")
+            .navigationTitle(viewModel.currentVideoTitle ?? "MP4 Player")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if viewModel.hasVideo {
+                        Button {
+                            viewModel.closeCurrentVideo()
+                        } label: {
+                            Label("ホーム", systemImage: "chevron.left")
+                        }
+                    }
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isFileImporterPresented = true
@@ -59,46 +70,51 @@ struct PlayerHomeView: View {
         }
     }
 
-    private var portraitContent: some View {
-        List {
+    private func portraitContent(in geometry: GeometryProxy) -> some View {
+        Group {
             if viewModel.hasVideo {
-                Section {
-                    videoArea
-                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                        .listRowBackground(Color.clear)
+                VStack(spacing: 0) {
+                    videoArea(in: geometry)
+
+                    List {
+                        recentList
+                    }
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                 }
             } else {
-                openVideoSection
+                List {
+                    openVideoSection
+                    recentList
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
             }
-
-            recentList
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
     }
 
     private var landscapePlayer: some View {
-        ZStack {
-            Color.black
-                .ignoresSafeArea()
-
-            VideoPlayer(player: viewModel.player)
-                .ignoresSafeArea()
-
-            if viewModel.isLoading {
-                ProgressView()
-                    .tint(.white)
-                    .scaleEffect(1.3)
-            }
-        }
+        playerSurface
+            .ignoresSafeArea()
     }
 
-    private var videoArea: some View {
+    private func videoArea(in geometry: GeometryProxy) -> some View {
+        let aspectRatio = min(max(viewModel.videoAspectRatio ?? (16.0 / 9.0), 0.45), 2.4)
+        let fullWidth = geometry.size.width
+        let naturalHeight = fullWidth / aspectRatio
+        let maxHeight = geometry.size.height * 0.72
+        let height = min(max(naturalHeight, 180), maxHeight)
+
+        return playerSurface
+            .frame(width: fullWidth, height: height)
+    }
+
+    private var playerSurface: some View {
         ZStack {
             Color.black
 
-            VideoPlayer(player: viewModel.player)
+            PlayerView(player: viewModel.player)
 
             if viewModel.isLoading {
                 ProgressView()
@@ -106,9 +122,7 @@ struct PlayerHomeView: View {
                     .scaleEffect(1.3)
             }
         }
-        .aspectRatio(16.0 / 9.0, contentMode: .fit)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.black)
     }
 
     private var openVideoSection: some View {
@@ -132,17 +146,26 @@ struct PlayerHomeView: View {
                     Button {
                         openRecent(video)
                     } label: {
-                        Label {
-                            Text(video.title)
-                                .lineLimit(1)
-                        } icon: {
+                        HStack(spacing: 12) {
                             Image(systemName: "film")
                                 .foregroundStyle(.secondary)
+
+                            Text(video.title)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            deleteRecent(video)
+                        } label: {
+                            Label("削除", systemImage: "trash")
+                        }
+                    }
                 }
-                .onDelete(perform: deleteRecent)
             }
         }
     }
@@ -154,7 +177,7 @@ struct PlayerHomeView: View {
             do {
                 let recent = try recentStore.addOrUpdate(url: url)
                 let storedURL = try recentStore.resolveURL(for: recent)
-                viewModel.open(url: storedURL, recentVideoID: recent.id)
+                viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
             } catch {
                 viewModel.setError("選択したファイルを取り込めませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }
@@ -169,20 +192,33 @@ struct PlayerHomeView: View {
     private func openRecent(_ video: RecentVideo) {
         do {
             let url = try recentStore.resolveURL(for: video)
-            viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id)
+            viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id, displayTitle: video.title)
         } catch {
             viewModel.setError("この動画はもう利用できません。もう一度ファイルAppから選択してください。")
         }
     }
 
-    private func deleteRecent(at offsets: IndexSet) {
-        let videos = recentStore.videos
-        offsets
-            .compactMap { videos.indices.contains($0) ? videos[$0] : nil }
-            .forEach { video in
-                let isCurrentVideo = viewModel.currentRecentVideoID == video.id
-                recentStore.remove(video, keepingStoredFile: isCurrentVideo)
-            }
+    private func deleteRecent(_ video: RecentVideo) {
+        let isCurrentVideo = viewModel.currentRecentVideoID == video.id
+        recentStore.remove(video, keepingStoredFile: isCurrentVideo)
+    }
+}
+
+private struct PlayerView: UIViewControllerRepresentable {
+    let player: AVPlayer
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.videoGravity = .resizeAspect
+        controller.allowsPictureInPicturePlayback = true
+        controller.showsPlaybackControls = true
+        return controller
+    }
+
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        controller.player = player
+        controller.showsPlaybackControls = true
     }
 }
 
