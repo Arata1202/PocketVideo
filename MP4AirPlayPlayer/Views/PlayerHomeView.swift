@@ -184,7 +184,7 @@ struct PlayerHomeView: View {
                 let storedURL = try recentStore.resolveURL(for: recent)
                 viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
             } catch {
-                viewModel.setError("選択したファイルを取り込めませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
+                viewModel.setError("選択したファイルを開けませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }
         case .failure(let error):
             if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
@@ -204,8 +204,7 @@ struct PlayerHomeView: View {
     }
 
     private func deleteRecent(_ video: RecentVideo) {
-        let isCurrentVideo = viewModel.currentRecentVideoID == video.id
-        recentStore.remove(video, keepingStoredFile: isCurrentVideo)
+        recentStore.remove(video)
     }
 }
 
