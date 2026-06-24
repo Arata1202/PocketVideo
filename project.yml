@@ -20,7 +20,7 @@ targets:
     info:
       path: MP4AirPlayPlayer/Info.plist
       properties:
-        CFBundleDisplayName: MP4 Player
+        CFBundleDisplayName: Pocket Video
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
