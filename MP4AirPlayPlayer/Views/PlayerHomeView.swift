@@ -23,7 +23,7 @@ struct PlayerHomeView: View {
                 }
                 .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
             }
-            .navigationTitle(viewModel.currentVideoTitle ?? "MP4 Player")
+            .navigationTitle(viewModel.currentVideoTitle ?? "Pocket Video")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
