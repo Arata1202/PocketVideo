@@ -9,8 +9,10 @@ private let supportedVideoContentTypes = ["mp4", "mov", "m4v", "3gp", "3g2"]
 struct PlayerHomeView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("isPictureInPictureEnabled") private var isPictureInPictureEnabled = true
     @StateObject private var viewModel = PlayerViewModel()
     @State private var isFileImporterPresented = false
+    @State private var isSettingsPresented = false
 
     var body: some View {
         NavigationStack {
@@ -41,15 +43,25 @@ struct PlayerHomeView: View {
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         isFileImporterPresented = true
                     } label: {
                         Image(systemName: "folder")
                     }
                     .accessibilityLabel("動画を選択")
+
+                    Button {
+                        isSettingsPresented = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("設定")
                 }
             }
+        }
+        .sheet(isPresented: $isSettingsPresented) {
+            SettingsView()
         }
         .fileImporter(
             isPresented: $isFileImporterPresented,
@@ -119,7 +131,7 @@ struct PlayerHomeView: View {
         ZStack {
             Color.black
 
-            PlayerView(player: viewModel.player)
+            PlayerView(player: viewModel.player, isPictureInPictureEnabled: isPictureInPictureEnabled)
 
             if viewModel.showsLoadingIndicator {
                 ProgressView()
@@ -208,8 +220,44 @@ struct PlayerHomeView: View {
     }
 }
 
+private struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("isPictureInPictureEnabled") private var isPictureInPictureEnabled = true
+    @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Toggle("Picture in Picture", isOn: $isPictureInPictureEnabled)
+                }
+
+                Section("テーマ") {
+                    Picker("テーマ", selection: $appAppearance) {
+                        ForEach(AppAppearance.allCases) { appearance in
+                            Text(appearance.title)
+                                .tag(appearance.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .navigationTitle("設定")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完了") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
 private struct PlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
+    let isPictureInPictureEnabled: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -219,23 +267,27 @@ private struct PlayerView: UIViewControllerRepresentable {
         let controller = AVPlayerViewController()
         controller.player = player
         controller.videoGravity = .resizeAspect
-        controller.allowsPictureInPicturePlayback = true
-        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        controller.allowsPictureInPicturePlayback = isPictureInPictureEnabled
+        controller.canStartPictureInPictureAutomaticallyFromInline = isPictureInPictureEnabled
         controller.showsPlaybackControls = true
         controller.delegate = context.coordinator
+        context.coordinator.isPictureInPictureEnabled = isPictureInPictureEnabled
         context.coordinator.attach(to: controller)
         return controller
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         controller.player = player
-        controller.allowsPictureInPicturePlayback = true
-        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        controller.allowsPictureInPicturePlayback = isPictureInPictureEnabled
+        controller.canStartPictureInPictureAutomaticallyFromInline = isPictureInPictureEnabled
         controller.showsPlaybackControls = true
         controller.delegate = context.coordinator
+        context.coordinator.isPictureInPictureEnabled = isPictureInPictureEnabled
     }
 
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
+        var isPictureInPictureEnabled = true
+
         private weak var controller: AVPlayerViewController?
         private var didBecomeActiveObserver: NSObjectProtocol?
         private var isPictureInPictureActive = false
@@ -273,8 +325,8 @@ private struct PlayerView: UIViewControllerRepresentable {
             let player = controller.player
             controller.allowsPictureInPicturePlayback = false
             DispatchQueue.main.async {
-                controller.allowsPictureInPicturePlayback = true
-                controller.canStartPictureInPictureAutomaticallyFromInline = true
+                controller.allowsPictureInPicturePlayback = self.isPictureInPictureEnabled
+                controller.canStartPictureInPictureAutomaticallyFromInline = self.isPictureInPictureEnabled
                 player?.play()
             }
         }

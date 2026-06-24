@@ -24,7 +24,6 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
-        UIUserInterfaceStyle: Light
         UIBackgroundModes:
           - audio
         UIFileSharingEnabled: true
