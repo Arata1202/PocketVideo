@@ -167,10 +167,18 @@ struct PlayerHomeView: View {
                             Image(systemName: "film")
                                 .foregroundStyle(.secondary)
 
-                            Text(video.title)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(video.title)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+
+                                if let resumeText = resumeText(for: video.lastPosition) {
+                                    Text(resumeText)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .contentShape(Rectangle())
                     }
@@ -219,6 +227,24 @@ struct PlayerHomeView: View {
     private func deleteRecent(_ video: RecentVideo) {
         recentStore.remove(video)
     }
+
+    private func resumeText(for position: TimeInterval) -> String? {
+        guard position >= 5 else { return nil }
+        return "\(formatDuration(position)) から再開"
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let totalSeconds = max(Int(seconds), 0)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+
+        return String(format: "%d:%02d", minutes, seconds)
+    }
 }
 
 private struct SettingsView: View {
@@ -246,6 +272,11 @@ private struct SettingsView: View {
                     }
                     .disabled(recentStore.videos.isEmpty)
                 }
+
+                Section("アプリ情報") {
+                    LabeledContent("対応形式", value: "MP4, MOV, M4V, 3GP, 3G2")
+                    LabeledContent("バージョン", value: appVersion)
+                }
             }
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
@@ -264,6 +295,11 @@ private struct SettingsView: View {
             }
             Button("キャンセル", role: .cancel) {}
         }
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        return version ?? "-"
     }
 }
 
