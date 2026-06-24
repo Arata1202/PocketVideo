@@ -104,27 +104,12 @@ struct PlayerHomeView: View {
     private func videoArea(in geometry: GeometryProxy) -> some View {
         let aspectRatio = min(max(viewModel.videoAspectRatio ?? (16.0 / 9.0), 0.45), 2.4)
         let fullWidth = geometry.size.width
-        let height = min(max(fullWidth * 9.0 / 16.0, 220), geometry.size.height * 0.58)
-        let playerSize = playerSize(for: aspectRatio, in: CGSize(width: fullWidth, height: height))
+        let naturalHeight = fullWidth / aspectRatio
+        let maxHeight = geometry.size.height * 0.72
+        let height = min(max(naturalHeight, 180), maxHeight)
 
-        return ZStack {
-            Color.black
-
-            playerSurface
-                .frame(width: playerSize.width, height: playerSize.height)
-        }
+        return playerSurface
             .frame(width: fullWidth, height: height)
-            .background(Color.black)
-    }
-
-    private func playerSize(for aspectRatio: CGFloat, in containerSize: CGSize) -> CGSize {
-        let containerAspectRatio = containerSize.width / containerSize.height
-
-        if aspectRatio > containerAspectRatio {
-            return CGSize(width: containerSize.width, height: containerSize.width / aspectRatio)
-        }
-
-        return CGSize(width: containerSize.height * aspectRatio, height: containerSize.height)
     }
 
     private var playerSurface: some View {
