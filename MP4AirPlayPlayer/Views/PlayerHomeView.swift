@@ -8,8 +8,6 @@ struct PlayerHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel = PlayerViewModel()
     @State private var isFileImporterPresented = false
-    @State private var areControlsVisible = true
-    @State private var controlsHideTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -62,16 +60,6 @@ struct PlayerHomeView: View {
                 viewModel.saveCurrentPosition()
             }
         }
-        .onChange(of: viewModel.isPlaying) { _, isPlaying in
-            if isPlaying {
-                showControlsTemporarily()
-            } else {
-                showControls()
-            }
-        }
-        .onDisappear {
-            controlsHideTask?.cancel()
-        }
     }
 
     private var portraitContent: some View {
@@ -94,50 +82,12 @@ struct PlayerHomeView: View {
     }
 
     private var landscapePlayer: some View {
-        playerSurface(isLandscape: true)
-            .ignoresSafeArea()
-    }
-
-    private var videoArea: some View {
-        playerSurface(isLandscape: false)
-            .aspectRatio(4.0 / 3.0, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func playerSurface(isLandscape: Bool) -> some View {
         ZStack {
             Color.black
+                .ignoresSafeArea()
 
-            PlayerView(player: viewModel.player, showsPlaybackControls: false)
-
-            HStack(spacing: 0) {
-                tapZone {
-                    handleSurfaceTap()
-                } doubleTapAction: {
-                    viewModel.seek(by: -10)
-                    showControlsTemporarily()
-                }
-
-                tapZone {
-                    handleSurfaceTap()
-                } doubleTapAction: {
-                    viewModel.togglePlayback()
-                    showControlsTemporarily()
-                }
-
-                tapZone {
-                    handleSurfaceTap()
-                } doubleTapAction: {
-                    viewModel.seek(by: 10)
-                    showControlsTemporarily()
-                }
-            }
-
-            if areControlsVisible {
-                playbackOverlay(isLandscape: isLandscape)
-                    .transition(.opacity)
-            }
+            PlayerView(player: viewModel.player, showsPlaybackControls: true)
+                .ignoresSafeArea()
 
             if viewModel.isLoading {
                 ProgressView()
@@ -145,86 +95,88 @@ struct PlayerHomeView: View {
                     .scaleEffect(1.3)
             }
         }
-        .background(Color.black)
     }
 
-    private func tapZone(tapAction: @escaping () -> Void, doubleTapAction: @escaping () -> Void) -> some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2, perform: doubleTapAction)
-            .onTapGesture(perform: tapAction)
-    }
-
-    private func playbackOverlay(isLandscape: Bool) -> some View {
-        ZStack(alignment: .bottom) {
-            HStack(spacing: isLandscape ? 44 : 24) {
-                overlayButton(systemImage: "gobackward.10", size: isLandscape ? 34 : 28) {
-                    viewModel.seek(by: -10)
-                    showControlsTemporarily()
-                }
-
-                overlayButton(systemImage: viewModel.isPlaying ? "pause.fill" : "play.fill", size: isLandscape ? 42 : 34) {
-                    viewModel.togglePlayback()
-                    showControlsTemporarily()
-                }
-
-                overlayButton(systemImage: "goforward.10", size: isLandscape ? 34 : 28) {
-                    viewModel.seek(by: 10)
-                    showControlsTemporarily()
-                }
-            }
-
-            VStack(spacing: 8) {
-                Slider(
-                    value: Binding(
-                        get: { viewModel.currentTime },
-                        set: { viewModel.seek(to: $0) }
-                    ),
-                    in: 0...max(viewModel.duration, 1),
-                    onEditingChanged: { isEditing in
-                        if isEditing {
-                            showControls()
-                        } else {
-                            showControlsTemporarily()
-                        }
-                    }
-                )
-                .disabled(viewModel.duration <= 0)
-
-                HStack(spacing: 10) {
-                    Text(formatTime(viewModel.currentTime))
-                        .monospacedDigit()
-
-                    Spacer()
-
-                    AirPlayRoutePicker()
-                        .frame(width: 32, height: 32)
-
-                    Text(formatTime(viewModel.duration))
-                        .monospacedDigit()
-                }
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.9))
-            }
-            .padding(.horizontal, isLandscape ? 28 : 14)
-            .padding(.bottom, isLandscape ? 22 : 10)
-            .background(
+    private var videoArea: some View {
+        VStack(spacing: 12) {
+            ZStack {
                 Color.black
-                    .opacity(0.55)
-                    .ignoresSafeArea(edges: isLandscape ? .bottom : [])
-            )
+
+                PlayerView(player: viewModel.player, showsPlaybackControls: false)
+
+                if viewModel.isLoading {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(1.3)
+                }
+            }
+            .aspectRatio(4.0 / 3.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            portraitPlaybackControls
         }
-        .foregroundStyle(.white)
     }
 
-    private func overlayButton(systemImage: String, size: CGFloat, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: size, weight: .semibold))
-                .frame(width: size + 34, height: size + 34)
-                .background(.black.opacity(0.45), in: Circle())
+    private var portraitPlaybackControls: some View {
+        VStack(spacing: 10) {
+            Slider(
+                value: Binding(
+                    get: { viewModel.currentTime },
+                    set: { viewModel.seek(to: $0) }
+                ),
+                in: 0...max(viewModel.duration, 1)
+            )
+            .disabled(viewModel.duration <= 0)
+
+            HStack {
+                Text(formatTime(viewModel.currentTime))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Text(formatTime(viewModel.duration))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+
+            HStack(spacing: 24) {
+                AirPlayRoutePicker()
+                    .frame(width: 32, height: 32)
+
+                Button {
+                    viewModel.seek(by: -10)
+                } label: {
+                    Image(systemName: "gobackward.10")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.hasVideo)
+
+                Button {
+                    viewModel.togglePlayback()
+                } label: {
+                    Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.title2)
+                        .frame(width: 52, height: 52)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!viewModel.hasVideo)
+
+                Button {
+                    viewModel.seek(by: 10)
+                } label: {
+                    Image(systemName: "goforward.10")
+                        .font(.title3)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.hasVideo)
+            }
         }
-        .buttonStyle(.plain)
     }
 
     private var openVideoSection: some View {
@@ -280,7 +232,6 @@ struct PlayerHomeView: View {
                 let recent = try recentStore.addOrUpdate(url: url)
                 let storedURL = try recentStore.resolveURL(for: recent)
                 viewModel.open(url: storedURL, recentVideoID: recent.id)
-                showControls()
             } catch {
                 viewModel.setError("選択したファイルを取り込めませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }
@@ -296,7 +247,6 @@ struct PlayerHomeView: View {
         do {
             let url = try recentStore.resolveURL(for: video)
             viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id)
-            showControls()
         } catch {
             viewModel.setError("この動画はもう利用できません。もう一度ファイルAppから選択してください。")
         }
@@ -305,46 +255,6 @@ struct PlayerHomeView: View {
     private func deleteRecent(_ video: RecentVideo) {
         let isCurrentVideo = viewModel.currentRecentVideoID == video.id
         recentStore.remove(video, keepingStoredFile: isCurrentVideo)
-    }
-
-    private func handleSurfaceTap() {
-        if areControlsVisible {
-            hideControls()
-        } else {
-            showControlsTemporarily()
-        }
-    }
-
-    private func showControls() {
-        controlsHideTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.18)) {
-            areControlsVisible = true
-        }
-    }
-
-    private func hideControls() {
-        controlsHideTask?.cancel()
-        guard viewModel.isPlaying else { return }
-        withAnimation(.easeInOut(duration: 0.18)) {
-            areControlsVisible = false
-        }
-    }
-
-    private func showControlsTemporarily() {
-        showControls()
-
-        guard viewModel.isPlaying else { return }
-
-        controlsHideTask = Task {
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else { return }
-
-            await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    areControlsVisible = false
-                }
-            }
-        }
     }
 
     private func formatTime(_ seconds: TimeInterval) -> String {
