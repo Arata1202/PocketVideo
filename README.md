@@ -2,11 +2,11 @@
 
 Pocket Video is a simple iOS app for local video playback with AirPlay support.
 
-It focuses on opening local MP4 and MOV files from Files, playing them on iPhone or iPad, and sending playback to AirPlay devices such as Apple TV.
+It focuses on opening local MP4, MOV, M4V, 3GP, and 3G2 files from Files, playing them on iPhone or iPad, and sending playback to AirPlay devices such as Apple TV.
 
 ## Features
 
-- Open local MP4 and MOV files from Files.
+- Open local MP4, MOV, M4V, 3GP, and 3G2 files from Files.
 - Play videos on iPhone and iPad.
 - Send playback to AirPlay devices.
 - Use the native Apple video player controls.

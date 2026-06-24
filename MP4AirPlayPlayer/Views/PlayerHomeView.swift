@@ -3,6 +3,9 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+private let supportedVideoContentTypes = ["mp4", "mov", "m4v", "3gp", "3g2"]
+    .compactMap { UTType(filenameExtension: $0) }
+
 struct PlayerHomeView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
     @Environment(\.scenePhase) private var scenePhase
@@ -50,7 +53,7 @@ struct PlayerHomeView: View {
         }
         .fileImporter(
             isPresented: $isFileImporterPresented,
-            allowedContentTypes: [.mpeg4Movie, .movie],
+            allowedContentTypes: supportedVideoContentTypes,
             allowsMultipleSelection: false,
             onCompletion: handleFileImport
         )
