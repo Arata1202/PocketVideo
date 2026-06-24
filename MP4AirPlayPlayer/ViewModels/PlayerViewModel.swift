@@ -19,10 +19,10 @@ final class PlayerViewModel: ObservableObject {
     private var scopedURL: URL?
     private weak var recentStore: RecentVideoStore?
     private var lastPositionSaveAt = Date.distantPast
+    private var isAudioSessionConfigured = false
 
     init() {
         player.allowsExternalPlayback = true
-        configureAudioSession()
         addPlaybackEndObserver()
     }
 
@@ -56,6 +56,8 @@ final class PlayerViewModel: ObservableObject {
         currentRecentVideoID = recentVideoID
         currentVideoTitle = displayTitle ?? url.lastPathComponent
         lastPositionSaveAt = .distantPast
+
+        configureAudioSessionIfNeeded()
 
         let asset = AVURLAsset(url: url)
         let item = AVPlayerItem(asset: asset)
@@ -146,12 +148,15 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func configureAudioSession() {
+    private func configureAudioSessionIfNeeded() {
+        guard !isAudioSessionConfigured else { return }
+
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
             try AVAudioSession.sharedInstance().setActive(true)
+            isAudioSessionConfigured = true
         } catch {
-            // Playback can still be attempted even if the session is not ready at launch.
+            // Playback can still be attempted even if the session is not ready.
             // File-open errors are the only failures surfaced through the video alert.
         }
     }
