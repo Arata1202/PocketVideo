@@ -73,14 +73,10 @@ struct PlayerHomeView: View {
     }
 
     private func portraitContent(in geometry: GeometryProxy) -> some View {
-        Group {
+        ZStack {
             if viewModel.hasVideo {
                 VStack(spacing: 0) {
                     videoArea(in: geometry)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .opacity
-                        ))
 
                     List {
                         recentList
@@ -88,6 +84,10 @@ struct PlayerHomeView: View {
                     .listStyle(.insetGrouped)
                     .scrollContentBackground(.hidden)
                 }
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .opacity
+                ))
             } else {
                 List {
                     openVideoSection
@@ -95,8 +95,10 @@ struct PlayerHomeView: View {
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
+                .transition(.opacity)
             }
         }
+        .clipped()
         .animation(.snappy(duration: 0.28), value: viewModel.hasVideo)
         .background(Color(uiColor: .systemGroupedBackground))
     }
@@ -184,7 +186,9 @@ struct PlayerHomeView: View {
             do {
                 let recent = try recentStore.addOrUpdate(url: url)
                 let storedURL = try recentStore.resolveURL(for: recent)
-                viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
+                withAnimation(.snappy(duration: 0.28)) {
+                    viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
+                }
             } catch {
                 viewModel.setError("選択したファイルを取り込めませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }
@@ -199,7 +203,9 @@ struct PlayerHomeView: View {
     private func openRecent(_ video: RecentVideo) {
         do {
             let url = try recentStore.resolveURL(for: video)
-            viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id, displayTitle: video.title)
+            withAnimation(.snappy(duration: 0.28)) {
+                viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id, displayTitle: video.title)
+            }
         } catch {
             viewModel.setError("この動画はもう利用できません。もう一度ファイルAppから選択してください。")
         }
