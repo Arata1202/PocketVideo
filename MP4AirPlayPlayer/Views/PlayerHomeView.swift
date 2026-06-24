@@ -77,6 +77,10 @@ struct PlayerHomeView: View {
             if viewModel.hasVideo {
                 VStack(spacing: 0) {
                     videoArea(in: geometry)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .opacity
+                        ))
 
                     List {
                         recentList
@@ -93,6 +97,7 @@ struct PlayerHomeView: View {
                 .scrollContentBackground(.hidden)
             }
         }
+        .animation(.snappy(duration: 0.28), value: viewModel.hasVideo)
         .background(Color(uiColor: .systemGroupedBackground))
     }
 
