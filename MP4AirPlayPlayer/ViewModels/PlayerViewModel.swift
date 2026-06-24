@@ -53,7 +53,6 @@ final class PlayerViewModel: ObservableObject {
 
         hasVideo = true
         currentRecentVideoID = recentVideoID
-        videoAspectRatio = nil
         lastPositionSaveAt = .distantPast
 
         let asset = AVURLAsset(url: url)
@@ -102,12 +101,14 @@ final class PlayerViewModel: ObservableObject {
                 guard !Task.isCancelled else { return }
 
                 await MainActor.run {
-                    self?.videoAspectRatio = width / height
+                    var transaction = Transaction()
+                    transaction.animation = nil
+                    withTransaction(transaction) {
+                        self?.videoAspectRatio = width / height
+                    }
                 }
             } catch {
-                await MainActor.run {
-                    self?.videoAspectRatio = nil
-                }
+                return
             }
         }
     }
