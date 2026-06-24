@@ -121,7 +121,7 @@ struct PlayerHomeView: View {
 
             PlayerView(player: viewModel.player)
 
-            if viewModel.isLoading {
+            if viewModel.showsLoadingIndicator {
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.3)

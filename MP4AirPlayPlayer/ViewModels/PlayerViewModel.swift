@@ -8,6 +8,7 @@ final class PlayerViewModel: ObservableObject {
     @Published var player = AVPlayer()
     @Published var hasVideo = false
     @Published var isLoading = false
+    @Published var showsLoadingIndicator = false
     @Published var errorMessage: String?
     @Published var currentRecentVideoID: RecentVideo.ID?
     @Published var currentVideoTitle: String?
@@ -16,6 +17,7 @@ final class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var playbackEndObserver: NSObjectProtocol?
     private var aspectRatioLoadTask: Task<Void, Never>?
+    private var loadingIndicatorTask: Task<Void, Never>?
     private var scopedURL: URL?
     private weak var recentStore: RecentVideoStore?
     private var lastPositionSaveAt = Date.distantPast
@@ -32,6 +34,7 @@ final class PlayerViewModel: ObservableObject {
                 player.removeTimeObserver(timeObserver)
             }
             aspectRatioLoadTask?.cancel()
+            loadingIndicatorTask?.cancel()
             stopSecurityScopedAccess()
             if let playbackEndObserver {
                 NotificationCenter.default.removeObserver(playbackEndObserver)
@@ -47,6 +50,7 @@ final class PlayerViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         aspectRatioLoadTask?.cancel()
+        scheduleLoadingIndicator()
 
         stopSecurityScopedAccess()
         if url.startAccessingSecurityScopedResource() {
@@ -76,7 +80,7 @@ final class PlayerViewModel: ObservableObject {
 
                 self.hasVideo = true
                 self.addPeriodicTimeObserver()
-                self.isLoading = false
+                self.finishLoading()
             }
         }
     }
@@ -84,10 +88,12 @@ final class PlayerViewModel: ObservableObject {
     func closeCurrentVideo() {
         saveCurrentPosition()
         aspectRatioLoadTask?.cancel()
+        loadingIndicatorTask?.cancel()
         player.pause()
         player.replaceCurrentItem(with: nil)
         hasVideo = false
         isLoading = false
+        showsLoadingIndicator = false
         currentRecentVideoID = nil
         currentVideoTitle = nil
         videoAspectRatio = nil
@@ -109,7 +115,28 @@ final class PlayerViewModel: ObservableObject {
 
     func setError(_ message: String) {
         errorMessage = message
+        finishLoading()
+    }
+
+    private func scheduleLoadingIndicator() {
+        loadingIndicatorTask?.cancel()
+        showsLoadingIndicator = false
+
+        loadingIndicatorTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard let self, self.isLoading else { return }
+                self.showsLoadingIndicator = true
+            }
+        }
+    }
+
+    private func finishLoading() {
         isLoading = false
+        loadingIndicatorTask?.cancel()
+        showsLoadingIndicator = false
     }
 
     private nonisolated static func videoAspectRatio(from asset: AVURLAsset) async -> CGFloat? {
