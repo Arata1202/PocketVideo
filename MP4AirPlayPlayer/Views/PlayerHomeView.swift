@@ -90,15 +90,16 @@ struct PlayerHomeView: View {
     private func portraitContent(in geometry: GeometryProxy) -> some View {
         Group {
             if viewModel.hasVideo {
-                VStack(spacing: 0) {
+                List {
                     videoArea(in: geometry)
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.black)
 
-                    List {
-                        recentList
-                    }
-                    .listStyle(.insetGrouped)
-                    .scrollContentBackground(.hidden)
+                    recentList
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             } else {
                 List {
                     openVideoSection
