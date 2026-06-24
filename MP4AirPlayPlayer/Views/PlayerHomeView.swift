@@ -167,8 +167,7 @@ struct PlayerHomeView: View {
             guard let url = urls.first else { return }
             do {
                 let recent = try recentStore.addOrUpdate(url: url)
-                let storedURL = try recentStore.resolveURL(for: recent)
-                viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
+                viewModel.open(url: url, recentVideoID: recent.id, displayTitle: recent.title)
             } catch {
                 viewModel.setError("選択したファイルを開けませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }

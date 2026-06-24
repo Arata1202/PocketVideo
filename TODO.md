@@ -18,6 +18,7 @@
 ## Playback Logic
 
 - Verify large videos start quickly now that playback uses the original file instead of copying into app storage.
+- Verify selected videos begin playback promptly without an extra bookmark-resolution round trip.
 - Check whether thumbnail generation needs caching after real-device testing.
 - Confirm recent videos reopen correctly after app relaunch.
 

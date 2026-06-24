@@ -23,6 +23,7 @@ final class PlayerViewModel: ObservableObject {
 
     init() {
         player.allowsExternalPlayback = true
+        player.automaticallyWaitsToMinimizeStalling = false
         addPlaybackEndObserver()
     }
 
@@ -61,6 +62,7 @@ final class PlayerViewModel: ObservableObject {
 
         let asset = AVURLAsset(url: url)
         let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = 1
         player.replaceCurrentItem(with: item)
         loadVideoAspectRatio(from: asset)
 
