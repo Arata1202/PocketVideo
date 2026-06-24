@@ -51,10 +51,13 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) {
+        saveCurrentPosition()
         isLoading = true
         errorMessage = nil
         aspectRatioLoadTask?.cancel()
         scheduleLoadingIndicator()
+        removePeriodicTimeObserver()
+        player.pause()
 
         stopSecurityScopedAccess()
         if url.startAccessingSecurityScopedResource() {
@@ -102,6 +105,7 @@ final class PlayerViewModel: ObservableObject {
         saveCurrentPosition()
         aspectRatioLoadTask?.cancel()
         loadingIndicatorTask?.cancel()
+        removePeriodicTimeObserver()
         playerItemStatusObservation?.invalidate()
         playerItemStatusObservation = nil
         player.pause()
@@ -248,9 +252,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func addPeriodicTimeObserver() {
-        if let timeObserver {
-            player.removeTimeObserver(timeObserver)
-        }
+        removePeriodicTimeObserver()
 
         let interval = CMTime(seconds: 5, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
@@ -262,6 +264,13 @@ final class PlayerViewModel: ObservableObject {
                 }
                 self.updateNowPlayingInfo()
             }
+        }
+    }
+
+    private func removePeriodicTimeObserver() {
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
         }
     }
 
