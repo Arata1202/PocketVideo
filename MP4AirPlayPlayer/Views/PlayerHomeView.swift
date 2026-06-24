@@ -1,6 +1,5 @@
 import AVKit
 import SwiftUI
-import UIKit
 import UniformTypeIdentifiers
 
 struct PlayerHomeView: View {
@@ -194,14 +193,12 @@ struct PlayerHomeView: View {
 }
 
 private struct RecentVideoRow: View {
-    @EnvironmentObject private var recentStore: RecentVideoStore
     let video: RecentVideo
     let isCurrent: Bool
-    @State private var thumbnail: UIImage?
 
     var body: some View {
         HStack(spacing: 12) {
-            thumbnailView
+            videoIcon
                 .frame(width: 96, height: 54)
                 .background(Color.black)
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -228,62 +225,15 @@ private struct RecentVideoRow: View {
         }
         .frame(minHeight: 58)
         .contentShape(Rectangle())
-        .task(id: video.id) {
-            await loadThumbnail()
-        }
     }
 
-    @ViewBuilder
-    private var thumbnailView: some View {
+    private var videoIcon: some View {
         ZStack {
             Color.black
 
-            if let thumbnail {
-                Image(uiImage: thumbnail)
-                    .resizable()
-                    .scaledToFit()
-            } else {
-                Image(systemName: "film")
-                    .font(.title3)
-                    .foregroundStyle(.white.opacity(0.65))
-            }
-        }
-    }
-
-    @MainActor
-    private func loadThumbnail() async {
-        thumbnail = nil
-        guard let url = try? recentStore.resolveURL(for: video) else { return }
-        thumbnail = await VideoThumbnailGenerator.makeThumbnail(for: url)
-    }
-}
-
-private enum VideoThumbnailGenerator {
-    static func makeThumbnail(for url: URL) async -> UIImage? {
-        let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
-        defer {
-            if didAccessSecurityScope {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let asset = AVURLAsset(url: url)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 320, height: 180)
-
-        return await withCheckedContinuation { continuation in
-            let time = CMTime(seconds: 0.5, preferredTimescale: 600)
-            generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, image, _, result, _ in
-                _ = generator
-
-                guard result == .succeeded, let image else {
-                    continuation.resume(returning: nil)
-                    return
-                }
-
-                continuation.resume(returning: UIImage(cgImage: image))
-            }
+            Image(systemName: "film")
+                .font(.title3)
+                .foregroundStyle(.white.opacity(0.65))
         }
     }
 }

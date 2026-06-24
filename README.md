@@ -13,7 +13,7 @@ It focuses on opening local video files from Files without copying them into app
 - Use the native Apple video player controls.
 - Resume recently opened videos.
 - Manage recently opened videos.
-- Show stable thumbnails for recently opened videos.
+- Keep a lightweight recent videos list.
 - Preserve the original video aspect ratio.
 - Adapt the player layout for portrait, landscape, and vertical videos.
 
