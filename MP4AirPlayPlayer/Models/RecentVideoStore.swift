@@ -12,18 +12,7 @@ final class RecentVideoStore: ObservableObject {
     }
 
     func addOrUpdate(url: URL, position: TimeInterval = 0) throws -> RecentVideo {
-        let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
-        defer {
-            if didAccessSecurityScope {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let bookmarkData = try url.bookmarkData(
-            options: [],
-            includingResourceValuesForKeys: nil,
-            relativeTo: nil
-        )
+        let bookmarkData = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
         let title = url.lastPathComponent
         let sourceKey = Self.sourceKey(for: url)
 
@@ -51,33 +40,11 @@ final class RecentVideoStore: ObservableObject {
         save()
     }
 
-    func remove(_ video: RecentVideo) {
-        guard let index = videos.firstIndex(where: { $0.id == video.id }) else { return }
-        videos.remove(at: index)
-        save()
-    }
-
     func resolveURL(for video: RecentVideo) throws -> URL {
         var isStale = false
-        let url = try URL(
-            resolvingBookmarkData: video.bookmarkData,
-            options: [],
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        )
+        let url = try URL(resolvingBookmarkData: video.bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
         if isStale {
             throw RecentVideoStoreError.staleBookmark
-        }
-
-        let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
-        defer {
-            if didAccessSecurityScope {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        if !FileManager.default.fileExists(atPath: url.path) {
-            throw RecentVideoStoreError.fileUnavailable
         }
         return url
     }
@@ -99,14 +66,8 @@ final class RecentVideoStore: ObservableObject {
 
 enum RecentVideoStoreError: LocalizedError {
     case staleBookmark
-    case fileUnavailable
 
     var errorDescription: String? {
-        switch self {
-        case .staleBookmark:
-            return "保存済みのファイル参照が無効です。"
-        case .fileUnavailable:
-            return "保存済みの動画ファイルが見つかりません。"
-        }
+        "The saved file reference is no longer valid."
     }
 }

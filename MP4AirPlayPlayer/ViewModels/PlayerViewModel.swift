@@ -6,25 +6,27 @@ import SwiftUI
 @MainActor
 final class PlayerViewModel: ObservableObject {
     @Published var player = AVPlayer()
+    @Published var title = "No Video"
     @Published var hasVideo = false
     @Published var isLoading = false
+    @Published var isPlaying = false
     @Published var errorMessage: String?
+    @Published var isAirPlayActive = false
     @Published var currentRecentVideoID: RecentVideo.ID?
-    @Published var currentVideoTitle: String?
-    @Published var videoAspectRatio: CGFloat?
 
     private var timeObserver: Any?
+    private var timeControlObserver: NSKeyValueObservation?
+    private var routeObserver: NSObjectProtocol?
     private var playbackEndObserver: NSObjectProtocol?
-    private var aspectRatioLoadTask: Task<Void, Never>?
     private var scopedURL: URL?
     private weak var recentStore: RecentVideoStore?
-    private var lastPositionSaveAt = Date.distantPast
-    private var isAudioSessionConfigured = false
 
     init() {
-        player.allowsExternalPlayback = true
-        player.automaticallyWaitsToMinimizeStalling = false
+        configureAudioSession()
+        observePlaybackState()
+        addRouteObserver()
         addPlaybackEndObserver()
+        updateAirPlayState()
     }
 
     deinit {
@@ -33,10 +35,12 @@ final class PlayerViewModel: ObservableObject {
                 player.removeTimeObserver(timeObserver)
             }
             stopSecurityScopedAccess()
+            if let routeObserver {
+                NotificationCenter.default.removeObserver(routeObserver)
+            }
             if let playbackEndObserver {
                 NotificationCenter.default.removeObserver(playbackEndObserver)
             }
-            aspectRatioLoadTask?.cancel()
         }
     }
 
@@ -44,7 +48,7 @@ final class PlayerViewModel: ObservableObject {
         recentStore = store
     }
 
-    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) {
+    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil) {
         isLoading = true
         errorMessage = nil
 
@@ -53,18 +57,12 @@ final class PlayerViewModel: ObservableObject {
             scopedURL = url
         }
 
+        title = url.lastPathComponent
         hasVideo = true
         currentRecentVideoID = recentVideoID
-        currentVideoTitle = displayTitle ?? url.lastPathComponent
-        lastPositionSaveAt = .distantPast
 
-        configureAudioSessionIfNeeded()
-
-        let asset = AVURLAsset(url: url)
-        let item = AVPlayerItem(asset: asset)
-        item.preferredForwardBufferDuration = 1
+        let item = AVPlayerItem(url: url)
         player.replaceCurrentItem(with: item)
-        loadVideoAspectRatio(from: asset)
 
         if resumePosition > 0 {
             let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
@@ -75,18 +73,25 @@ final class PlayerViewModel: ObservableObject {
         isLoading = false
     }
 
-    func closeCurrentVideo() {
-        saveCurrentPosition()
-        aspectRatioLoadTask?.cancel()
-        player.pause()
-        player.replaceCurrentItem(with: nil)
-        hasVideo = false
-        isLoading = false
-        currentRecentVideoID = nil
-        currentVideoTitle = nil
-        videoAspectRatio = nil
-        lastPositionSaveAt = .distantPast
-        stopSecurityScopedAccess()
+    func playPause() {
+        guard hasVideo else { return }
+
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            player.play()
+            isPlaying = true
+        }
+    }
+
+    func skip(seconds: Double) {
+        guard hasVideo else { return }
+
+        let current = player.currentTime().seconds
+        guard current.isFinite else { return }
+        let next = max(current + seconds, 0)
+        player.seek(to: CMTime(seconds: next, preferredTimescale: 600))
     }
 
     func saveCurrentPosition() {
@@ -106,60 +111,46 @@ final class PlayerViewModel: ObservableObject {
         isLoading = false
     }
 
-    private func loadVideoAspectRatio(from asset: AVURLAsset) {
-        aspectRatioLoadTask?.cancel()
-        aspectRatioLoadTask = Task { [weak self] in
-            do {
-                let tracks = try await asset.loadTracks(withMediaType: .video)
-                guard let track = tracks.first else { return }
-                let naturalSize = try await track.load(.naturalSize)
-                let preferredTransform = try await track.load(.preferredTransform)
-                let transformedSize = naturalSize.applying(preferredTransform)
-                let width = abs(transformedSize.width)
-                let height = abs(transformedSize.height)
-                guard width > 0, height > 0 else { return }
-                guard !Task.isCancelled else { return }
-
-                await MainActor.run {
-                    var transaction = Transaction()
-                    transaction.animation = nil
-                    withTransaction(transaction) {
-                        self?.videoAspectRatio = width / height
-                    }
-                }
-            } catch {
-                return
-            }
-        }
-    }
-
     private func addPeriodicTimeObserver() {
         if let timeObserver {
             player.removeTimeObserver(timeObserver)
         }
 
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        let interval = CMTime(seconds: 5, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
-                if Date().timeIntervalSince(self.lastPositionSaveAt) >= 5 {
-                    self.saveCurrentPosition()
-                    self.lastPositionSaveAt = Date()
-                }
+                self?.saveCurrentPosition()
             }
         }
     }
 
-    private func configureAudioSessionIfNeeded() {
-        guard !isAudioSessionConfigured else { return }
+    private func observePlaybackState() {
+        timeControlObserver = player.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
+            let isPlaying = player.timeControlStatus == .playing
+            Task { @MainActor in
+                self?.isPlaying = isPlaying
+            }
+        }
+    }
 
+    private func configureAudioSession() {
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
             try AVAudioSession.sharedInstance().setActive(true)
-            isAudioSessionConfigured = true
         } catch {
-            // Playback can still be attempted even if the session is not ready.
-            // File-open errors are the only failures surfaced through the video alert.
+            errorMessage = "Audio session setup failed."
+        }
+    }
+
+    private func addRouteObserver() {
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateAirPlayState()
+            }
         }
     }
 
@@ -170,8 +161,15 @@ final class PlayerViewModel: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
+                self?.isPlaying = false
                 self?.saveCurrentPosition()
             }
+        }
+    }
+
+    private func updateAirPlayState() {
+        isAirPlayActive = AVAudioSession.sharedInstance().currentRoute.outputs.contains { output in
+            output.portType == .airPlay
         }
     }
 }
