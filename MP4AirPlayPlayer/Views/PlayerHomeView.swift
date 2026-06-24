@@ -23,7 +23,7 @@ struct PlayerHomeView: View {
                 }
                 .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
             }
-            .navigationTitle(viewModel.currentVideoTitle ?? "MP4 Player")
+            .navigationTitle(viewModel.currentVideoTitle ?? "Pocket Video")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -170,7 +170,7 @@ struct PlayerHomeView: View {
                 let storedURL = try recentStore.resolveURL(for: recent)
                 viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
             } catch {
-                viewModel.setError("選択したファイルを取り込めませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
+                viewModel.setError("選択したファイルを開けませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }
         case .failure(let error):
             if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
@@ -190,8 +190,7 @@ struct PlayerHomeView: View {
     }
 
     private func deleteRecent(_ video: RecentVideo) {
-        let isCurrentVideo = viewModel.currentRecentVideoID == video.id
-        recentStore.remove(video, keepingStoredFile: isCurrentVideo)
+        recentStore.remove(video)
     }
 }
 
@@ -262,6 +261,13 @@ private struct RecentVideoRow: View {
 
 private enum VideoThumbnailGenerator {
     static func makeThumbnail(for url: URL) async -> UIImage? {
+        let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccessSecurityScope {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
         let asset = AVURLAsset(url: url)
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true

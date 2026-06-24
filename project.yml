@@ -15,14 +15,18 @@ targets:
       - MP4AirPlayPlayer
     settings:
       base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: com.arata1202.MP4AirPlayPlayer
     info:
       path: MP4AirPlayPlayer/Info.plist
       properties:
-        CFBundleDisplayName: MP4 Player
+        CFBundleDisplayName: Pocket Video
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: LaunchIcon
+          UIImageRespectsSafeAreaInsets: true
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         UISupportedInterfaceOrientations:
