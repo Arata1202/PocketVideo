@@ -211,6 +211,10 @@ struct PlayerHomeView: View {
 private struct PlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = player
@@ -218,6 +222,7 @@ private struct PlayerView: UIViewControllerRepresentable {
         controller.allowsPictureInPicturePlayback = true
         controller.canStartPictureInPictureAutomaticallyFromInline = true
         controller.showsPlaybackControls = true
+        context.coordinator.attach(to: controller)
         return controller
     }
 
@@ -226,6 +231,40 @@ private struct PlayerView: UIViewControllerRepresentable {
         controller.allowsPictureInPicturePlayback = true
         controller.canStartPictureInPictureAutomaticallyFromInline = true
         controller.showsPlaybackControls = true
+    }
+
+    final class Coordinator {
+        private weak var controller: AVPlayerViewController?
+        private var didBecomeActiveObserver: NSObjectProtocol?
+
+        deinit {
+            if let didBecomeActiveObserver {
+                NotificationCenter.default.removeObserver(didBecomeActiveObserver)
+            }
+        }
+
+        func attach(to controller: AVPlayerViewController) {
+            self.controller = controller
+
+            guard didBecomeActiveObserver == nil else { return }
+            didBecomeActiveObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.stopPictureInPicture()
+            }
+        }
+
+        private func stopPictureInPicture() {
+            guard let controller else { return }
+
+            controller.allowsPictureInPicturePlayback = false
+            DispatchQueue.main.async {
+                controller.allowsPictureInPicturePlayback = true
+                controller.canStartPictureInPictureAutomaticallyFromInline = true
+            }
+        }
     }
 }
 
