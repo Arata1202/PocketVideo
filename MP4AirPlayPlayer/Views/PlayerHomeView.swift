@@ -160,29 +160,29 @@ struct PlayerHomeView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(recentStore.videos) { video in
-                    Button {
-                        openRecent(video)
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "film")
-                                .foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        Image(systemName: "film")
+                            .foregroundStyle(.secondary)
 
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(video.title)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(video.title)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
 
-                                if let playbackText = playbackText(for: video) {
-                                    Text(playbackText)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                            if let playbackText = playbackText(for: video) {
+                                Text(playbackText)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        openRecent(video)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
                             deleteRecent(video)
