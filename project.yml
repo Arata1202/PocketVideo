@@ -17,10 +17,11 @@ targets:
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        PRODUCT_BUNDLE_IDENTIFIER: com.arata1202.MP4AirPlayPlayer
+        PRODUCT_BUNDLE_IDENTIFIER: com.arata1202.PocketVideo
     info:
       path: MP4AirPlayPlayer/Info.plist
       properties:
+        CFBundleName: Pocket Video
         CFBundleDisplayName: Pocket Video
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
