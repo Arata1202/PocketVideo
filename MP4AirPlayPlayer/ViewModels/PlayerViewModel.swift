@@ -24,6 +24,7 @@ final class PlayerViewModel: ObservableObject {
     private var scopedURL: URL?
     private weak var recentStore: RecentVideoStore?
     private var lastPositionSaveAt = Date.distantPast
+    private var didFinishPlayback = false
 
     init() {
         player.allowsExternalPlayback = true
@@ -69,6 +70,7 @@ final class PlayerViewModel: ObservableObject {
         currentVideoTitle = displayTitle ?? url.lastPathComponent
         currentPlaybackPosition = resumePosition
         lastPositionSaveAt = .distantPast
+        didFinishPlayback = false
 
         let asset = AVURLAsset(url: url)
         aspectRatioLoadTask = Task { [weak self] in
@@ -121,12 +123,19 @@ final class PlayerViewModel: ObservableObject {
         currentPlaybackPosition = 0
         videoAspectRatio = nil
         lastPositionSaveAt = .distantPast
+        didFinishPlayback = false
         clearNowPlayingInfo()
         stopSecurityScopedAccess()
     }
 
     func saveCurrentPosition() {
         guard let id = currentRecentVideoID else { return }
+        if didFinishPlayback {
+            currentPlaybackPosition = 0
+            recentStore?.updatePosition(for: id, position: 0)
+            return
+        }
+
         let seconds = player.currentTime().seconds
         guard seconds.isFinite else { return }
         currentPlaybackPosition = seconds
@@ -187,6 +196,7 @@ final class PlayerViewModel: ObservableObject {
 
         commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
+                self?.didFinishPlayback = false
                 self?.player.play()
                 self?.updateNowPlayingInfo()
             }
@@ -206,6 +216,7 @@ final class PlayerViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 if self.player.rate == 0 {
+                    self.didFinishPlayback = false
                     self.player.play()
                 } else {
                     self.player.pause()
@@ -235,7 +246,7 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func updateNowPlayingInfo() {
+    private func updateNowPlayingInfo(elapsedTime overrideElapsedTime: TimeInterval? = nil, playbackRate overridePlaybackRate: Float? = nil) {
         guard hasVideo || currentVideoTitle != nil else {
             clearNowPlayingInfo()
             return
@@ -243,10 +254,10 @@ final class PlayerViewModel: ObservableObject {
 
         var nowPlayingInfo: [String: Any] = [
             MPMediaItemPropertyTitle: currentVideoTitle ?? "Pocket Video",
-            MPNowPlayingInfoPropertyPlaybackRate: player.rate
+            MPNowPlayingInfoPropertyPlaybackRate: overridePlaybackRate ?? player.rate
         ]
 
-        let elapsedTime = player.currentTime().seconds
+        let elapsedTime = overrideElapsedTime ?? player.currentTime().seconds
         if elapsedTime.isFinite {
             nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedTime
         }
@@ -274,6 +285,7 @@ final class PlayerViewModel: ObservableObject {
 
         player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor in
+                self?.didFinishPlayback = false
                 self?.currentPlaybackPosition = targetSeconds
                 self?.saveCurrentPosition()
                 self?.updateNowPlayingInfo()
@@ -323,9 +335,18 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func updateCurrentPlaybackPosition() {
+        guard !didFinishPlayback else { return }
         let seconds = player.currentTime().seconds
         guard seconds.isFinite else { return }
         currentPlaybackPosition = seconds
+    }
+
+    private func markPlaybackCompleted() {
+        guard let id = currentRecentVideoID else { return }
+        didFinishPlayback = true
+        currentPlaybackPosition = 0
+        recentStore?.updatePosition(for: id, position: 0)
+        updateNowPlayingInfo(elapsedTime: 0, playbackRate: 0)
     }
 
     private func removePeriodicTimeObserver() {
@@ -350,9 +371,10 @@ final class PlayerViewModel: ObservableObject {
             forName: .AVPlayerItemDidPlayToEndTime,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
             Task { @MainActor in
-                self?.saveCurrentPosition()
+                guard let self, notification.object as? AVPlayerItem === self.player.currentItem else { return }
+                self.markPlaybackCompleted()
             }
         }
     }
