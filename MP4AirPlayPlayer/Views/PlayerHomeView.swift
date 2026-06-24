@@ -23,18 +23,26 @@ struct PlayerHomeView: View {
                 }
                 .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
             }
-            .navigationTitle("MP4 Player")
-            .navigationBarTitleDisplayMode(viewModel.hasVideo ? .inline : .large)
+            .navigationTitle(viewModel.currentVideoTitle ?? "MP4 Player")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     if viewModel.hasVideo {
                         Button {
-                            isFileImporterPresented = true
+                            viewModel.closeCurrentVideo()
                         } label: {
-                            Image(systemName: "folder")
+                            Label("ホーム", systemImage: "chevron.left")
                         }
-                        .accessibilityLabel("動画を選択")
                     }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isFileImporterPresented = true
+                    } label: {
+                        Image(systemName: "folder")
+                    }
+                    .accessibilityLabel("動画を選択")
                 }
             }
         }
@@ -160,7 +168,7 @@ struct PlayerHomeView: View {
             do {
                 let recent = try recentStore.addOrUpdate(url: url)
                 let storedURL = try recentStore.resolveURL(for: recent)
-                viewModel.open(url: storedURL, recentVideoID: recent.id)
+                viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
             } catch {
                 viewModel.setError("選択したファイルを取り込めませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
             }
@@ -175,7 +183,7 @@ struct PlayerHomeView: View {
     private func openRecent(_ video: RecentVideo) {
         do {
             let url = try recentStore.resolveURL(for: video)
-            viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id)
+            viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id, displayTitle: video.title)
         } catch {
             viewModel.setError("この動画はもう利用できません。もう一度ファイルAppから選択してください。")
         }

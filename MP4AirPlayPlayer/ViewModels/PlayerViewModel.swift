@@ -10,6 +10,7 @@ final class PlayerViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var currentRecentVideoID: RecentVideo.ID?
+    @Published var currentVideoTitle: String?
     @Published var videoAspectRatio: CGFloat?
 
     private var timeObserver: Any?
@@ -42,7 +43,7 @@ final class PlayerViewModel: ObservableObject {
         recentStore = store
     }
 
-    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil) {
+    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) {
         isLoading = true
         errorMessage = nil
 
@@ -53,6 +54,7 @@ final class PlayerViewModel: ObservableObject {
 
         hasVideo = true
         currentRecentVideoID = recentVideoID
+        currentVideoTitle = displayTitle ?? url.lastPathComponent
         lastPositionSaveAt = .distantPast
 
         let asset = AVURLAsset(url: url)
@@ -67,6 +69,20 @@ final class PlayerViewModel: ObservableObject {
 
         addPeriodicTimeObserver()
         isLoading = false
+    }
+
+    func closeCurrentVideo() {
+        saveCurrentPosition()
+        aspectRatioLoadTask?.cancel()
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        hasVideo = false
+        isLoading = false
+        currentRecentVideoID = nil
+        currentVideoTitle = nil
+        videoAspectRatio = nil
+        lastPositionSaveAt = .distantPast
+        stopSecurityScopedAccess()
     }
 
     func saveCurrentPosition() {
