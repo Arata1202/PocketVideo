@@ -1,6 +1,7 @@
 import AVFoundation
 import AVKit
 import Foundation
+import MediaPlayer
 import SwiftUI
 
 @MainActor
@@ -26,6 +27,7 @@ final class PlayerViewModel: ObservableObject {
     init() {
         player.allowsExternalPlayback = true
         configureAudioSession()
+        configureRemoteCommands()
         addPlaybackEndObserver()
     }
 
@@ -81,10 +83,12 @@ final class PlayerViewModel: ObservableObject {
                     self.player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
                         Task { @MainActor in
                             self?.player.play()
+                            self?.updateNowPlayingInfo()
                         }
                     }
                 } else {
                     self.player.play()
+                    self.updateNowPlayingInfo()
                 }
 
                 self.hasVideo = true
@@ -109,6 +113,7 @@ final class PlayerViewModel: ObservableObject {
         currentVideoTitle = nil
         videoAspectRatio = nil
         lastPositionSaveAt = .distantPast
+        clearNowPlayingInfo()
         stopSecurityScopedAccess()
     }
 
@@ -161,6 +166,71 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    private func configureRemoteCommands() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.playCommand.isEnabled = true
+        commandCenter.pauseCommand.isEnabled = true
+        commandCenter.togglePlayPauseCommand.isEnabled = true
+
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.player.play()
+                self?.updateNowPlayingInfo()
+            }
+            return .success
+        }
+
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                self?.player.pause()
+                self?.saveCurrentPosition()
+                self?.updateNowPlayingInfo()
+            }
+            return .success
+        }
+
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.player.rate == 0 {
+                    self.player.play()
+                } else {
+                    self.player.pause()
+                    self.saveCurrentPosition()
+                }
+                self.updateNowPlayingInfo()
+            }
+            return .success
+        }
+    }
+
+    private func updateNowPlayingInfo() {
+        guard hasVideo || currentVideoTitle != nil else {
+            clearNowPlayingInfo()
+            return
+        }
+
+        var nowPlayingInfo: [String: Any] = [
+            MPMediaItemPropertyTitle: currentVideoTitle ?? "Pocket Video",
+            MPNowPlayingInfoPropertyPlaybackRate: player.rate
+        ]
+
+        let elapsedTime = player.currentTime().seconds
+        if elapsedTime.isFinite {
+            nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedTime
+        }
+
+        if let duration = player.currentItem?.duration.seconds, duration.isFinite {
+            nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
+    }
+
+    private func clearNowPlayingInfo() {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+    }
+
     private nonisolated static func videoAspectRatio(from asset: AVURLAsset) async -> CGFloat? {
         do {
             let tracks = try await asset.loadTracks(withMediaType: .video)
@@ -190,6 +260,7 @@ final class PlayerViewModel: ObservableObject {
                     self.saveCurrentPosition()
                     self.lastPositionSaveAt = Date()
                 }
+                self.updateNowPlayingInfo()
             }
         }
     }
