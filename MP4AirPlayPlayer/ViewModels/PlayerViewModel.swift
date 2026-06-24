@@ -46,29 +46,39 @@ final class PlayerViewModel: ObservableObject {
     func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) {
         isLoading = true
         errorMessage = nil
+        aspectRatioLoadTask?.cancel()
 
         stopSecurityScopedAccess()
         if url.startAccessingSecurityScopedResource() {
             scopedURL = url
         }
 
-        hasVideo = true
         currentRecentVideoID = recentVideoID
         currentVideoTitle = displayTitle ?? url.lastPathComponent
         lastPositionSaveAt = .distantPast
 
         let asset = AVURLAsset(url: url)
-        let item = AVPlayerItem(asset: asset)
-        player.replaceCurrentItem(with: item)
-        loadVideoAspectRatio(from: asset)
+        aspectRatioLoadTask = Task { [weak self] in
+            let aspectRatio = await Self.videoAspectRatio(from: asset) ?? (16.0 / 9.0)
+            guard !Task.isCancelled else { return }
 
-        if resumePosition > 0 {
-            let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
-            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+            await MainActor.run {
+                guard let self else { return }
+
+                let item = AVPlayerItem(asset: asset)
+                self.videoAspectRatio = aspectRatio
+                self.player.replaceCurrentItem(with: item)
+
+                if resumePosition > 0 {
+                    let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
+                    self.player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+                }
+
+                self.hasVideo = true
+                self.addPeriodicTimeObserver()
+                self.isLoading = false
+            }
         }
-
-        addPeriodicTimeObserver()
-        isLoading = false
     }
 
     func closeCurrentVideo() {
@@ -102,31 +112,19 @@ final class PlayerViewModel: ObservableObject {
         isLoading = false
     }
 
-    private func loadVideoAspectRatio(from asset: AVURLAsset) {
-        aspectRatioLoadTask?.cancel()
-        aspectRatioLoadTask = Task { [weak self] in
-            do {
-                let tracks = try await asset.loadTracks(withMediaType: .video)
-                guard let track = tracks.first else { return }
-                let naturalSize = try await track.load(.naturalSize)
-                let preferredTransform = try await track.load(.preferredTransform)
-                let transformedSize = naturalSize.applying(preferredTransform)
-                let width = abs(transformedSize.width)
-                let height = abs(transformedSize.height)
-                guard width > 0, height > 0 else { return }
-
-                let aspectRatio = width / height
-                await MainActor.run {
-                    guard let self else { return }
-                    var transaction = Transaction()
-                    transaction.animation = nil
-                    withTransaction(transaction) {
-                        self.videoAspectRatio = aspectRatio
-                    }
-                }
-            } catch {
-                // Keep the previous layout if the asset cannot expose dimensions quickly.
-            }
+    private nonisolated static func videoAspectRatio(from asset: AVURLAsset) async -> CGFloat? {
+        do {
+            let tracks = try await asset.loadTracks(withMediaType: .video)
+            guard let track = tracks.first else { return nil }
+            let naturalSize = try await track.load(.naturalSize)
+            let preferredTransform = try await track.load(.preferredTransform)
+            let transformedSize = naturalSize.applying(preferredTransform)
+            let width = abs(transformedSize.width)
+            let height = abs(transformedSize.height)
+            guard width > 0, height > 0 else { return nil }
+            return width / height
+        } catch {
+            return nil
         }
     }
 
