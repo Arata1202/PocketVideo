@@ -98,14 +98,14 @@ struct PlayerHomeView: View {
 
                     recentList
                 }
-                .listStyle(.inset)
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             } else {
                 List {
                     openVideoSection
                     recentList
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
         }
