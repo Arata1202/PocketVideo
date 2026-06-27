@@ -15,6 +15,7 @@ private enum AppLinks {
 struct PlayerHomeView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
     @StateObject private var viewModel = PlayerViewModel()
     @State private var isFileImporterPresented = false
     @State private var isPlayerPresented = false
@@ -188,7 +189,10 @@ struct PlayerHomeView: View {
         ZStack {
             Color.black
 
-            PlayerView(player: viewModel.player)
+            PlayerView(
+                player: viewModel.player,
+                allowsPictureInPicture: allowsPictureInPicture
+            )
 
             if viewModel.showsLoadingIndicator {
                 ProgressView()
@@ -458,12 +462,17 @@ private struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var recentStore: RecentVideoStore
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
+    @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
     @State private var isClearRecentConfirmationPresented = false
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("テーマ") {
+                Section("再生") {
+                    Toggle("ピクチャインピクチャを許可", isOn: $allowsPictureInPicture)
+                }
+
+                Section("表示") {
                     Picker("テーマ", selection: $appAppearance) {
                         ForEach(AppAppearance.allCases) { appearance in
                             Text(appearance.title)
@@ -473,16 +482,11 @@ private struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
 
-                Section {
+                Section("履歴") {
                     Button("履歴をすべて削除", role: .destructive) {
                         isClearRecentConfirmationPresented = true
                     }
                     .disabled(recentStore.videos.isEmpty)
-                }
-
-                Section("アプリ情報") {
-                    LabeledContent("対応形式", value: "MP4, MOV, M4V, 3GP, 3G2")
-                    LabeledContent("バージョン", value: appVersion)
                 }
 
                 Section("サポート") {
@@ -493,6 +497,11 @@ private struct SettingsView: View {
                     Link(destination: AppLinks.privacyPolicy) {
                         Label("プライバシーポリシー", systemImage: "hand.raised")
                     }
+                }
+
+                Section("アプリ情報") {
+                    LabeledContent("対応形式", value: "MP4, MOV, M4V, 3GP, 3G2")
+                    LabeledContent("バージョン", value: appVersion)
                 }
             }
             .navigationTitle("設定")
@@ -523,6 +532,7 @@ private struct SettingsView: View {
 
 private struct PlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
+    let allowsPictureInPicture: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -533,8 +543,8 @@ private struct PlayerView: UIViewControllerRepresentable {
         controller.player = player
         controller.delegate = context.coordinator
         controller.videoGravity = .resizeAspect
-        controller.allowsPictureInPicturePlayback = true
-        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        controller.allowsPictureInPicturePlayback = allowsPictureInPicture
+        controller.canStartPictureInPictureAutomaticallyFromInline = allowsPictureInPicture
         controller.showsPlaybackControls = true
         return controller
     }
@@ -542,8 +552,8 @@ private struct PlayerView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         controller.player = player
         controller.delegate = context.coordinator
-        controller.allowsPictureInPicturePlayback = true
-        controller.canStartPictureInPictureAutomaticallyFromInline = true
+        controller.allowsPictureInPicturePlayback = allowsPictureInPicture
+        controller.canStartPictureInPictureAutomaticallyFromInline = allowsPictureInPicture
         controller.showsPlaybackControls = true
     }
 
