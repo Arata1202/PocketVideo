@@ -23,7 +23,9 @@ final class PlayerViewModel: ObservableObject {
 
     private var timeObserver: Any?
     private var playbackEndObserver: NSObjectProtocol?
+    private var playbackFailureObserver: NSObjectProtocol?
     private var playerItemStatusObservation: NSKeyValueObservation?
+    private var playerTimeControlStatusObservation: NSKeyValueObservation?
     private var aspectRatioLoadTask: Task<Void, Never>?
     private var loadingIndicatorTask: Task<Void, Never>?
     private var remoteCommandTargets: [RemoteCommandTarget] = []
@@ -36,7 +38,8 @@ final class PlayerViewModel: ObservableObject {
         player.allowsExternalPlayback = true
         configureAudioSession()
         configureRemoteCommands()
-        addPlaybackEndObserver()
+        observePlayerPlaybackState()
+        addPlaybackObservers()
     }
 
     deinit {
@@ -45,12 +48,16 @@ final class PlayerViewModel: ObservableObject {
                 player.removeTimeObserver(timeObserver)
             }
             playerItemStatusObservation?.invalidate()
+            playerTimeControlStatusObservation?.invalidate()
             aspectRatioLoadTask?.cancel()
             loadingIndicatorTask?.cancel()
             removeRemoteCommandTargets()
             stopSecurityScopedAccess()
             if let playbackEndObserver {
                 NotificationCenter.default.removeObserver(playbackEndObserver)
+            }
+            if let playbackFailureObserver {
+                NotificationCenter.default.removeObserver(playbackFailureObserver)
             }
         }
     }
@@ -72,6 +79,7 @@ final class PlayerViewModel: ObservableObject {
         player.pause()
         player.replaceCurrentItem(with: nil)
         clearNowPlayingInfo()
+        setRemoteCommandsEnabled(false)
 
         stopSecurityScopedAccess()
         hasVideo = false
@@ -133,6 +141,7 @@ final class PlayerViewModel: ObservableObject {
         lastPositionSaveAt = .distantPast
         didFinishPlayback = false
         clearNowPlayingInfo()
+        setRemoteCommandsEnabled(false)
         stopSecurityScopedAccess()
     }
 
@@ -206,6 +215,7 @@ final class PlayerViewModel: ObservableObject {
     private func startPlayback(resumePosition: TimeInterval) {
         hasVideo = true
         didFinishPlayback = false
+        setRemoteCommandsEnabled(true)
         addPeriodicTimeObserver()
         finishLoading()
 
@@ -232,6 +242,7 @@ final class PlayerViewModel: ObservableObject {
         currentPlaybackPosition = 0
         videoAspectRatio = nil
         clearNowPlayingInfo()
+        setRemoteCommandsEnabled(false)
         setError("この動画は再生できません。対応拡張子でも、動画のコーデックによっては再生できない場合があります。")
     }
 
@@ -302,6 +313,17 @@ final class PlayerViewModel: ObservableObject {
             return .success
         }
         remoteCommandTargets.append(RemoteCommandTarget(command: commandCenter.skipBackwardCommand, target: skipBackwardTarget))
+
+        setRemoteCommandsEnabled(false)
+    }
+
+    private func setRemoteCommandsEnabled(_ isEnabled: Bool) {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.playCommand.isEnabled = isEnabled
+        commandCenter.pauseCommand.isEnabled = isEnabled
+        commandCenter.togglePlayPauseCommand.isEnabled = isEnabled
+        commandCenter.skipForwardCommand.isEnabled = isEnabled
+        commandCenter.skipBackwardCommand.isEnabled = isEnabled
     }
 
     private func removeRemoteCommandTargets() {
@@ -431,7 +453,20 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func addPlaybackEndObserver() {
+    private func observePlayerPlaybackState() {
+        playerTimeControlStatusObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor in
+                guard let self, self.hasVideo else { return }
+
+                if self.player.timeControlStatus == .paused {
+                    self.saveCurrentPosition()
+                }
+                self.updateNowPlayingInfo()
+            }
+        }
+    }
+
+    private func addPlaybackObservers() {
         playbackEndObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: nil,
@@ -440,6 +475,17 @@ final class PlayerViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self, notification.object as? AVPlayerItem === self.player.currentItem else { return }
                 self.markPlaybackCompleted()
+            }
+        }
+
+        playbackFailureObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                guard let self, notification.object as? AVPlayerItem === self.player.currentItem else { return }
+                self.handlePlayerItemFailure()
             }
         }
     }

@@ -383,8 +383,3 @@ private struct PlayerView: UIViewControllerRepresentable {
         controller.showsPlaybackControls = true
     }
 }
-
-#Preview {
-    PlayerHomeView()
-        .environmentObject(RecentVideoStore())
-}
