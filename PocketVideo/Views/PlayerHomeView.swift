@@ -19,6 +19,12 @@ struct PlayerHomeView: View {
     @State private var isFileImporterPresented = false
     @State private var isPlayerPresented = false
     @State private var isSettingsPresented = false
+    @State private var hasAppeared = false
+    @State private var pendingOpenURL: URL?
+    @State private var isPreparingFile = false
+    @State private var preparingFileName: String?
+    @State private var filePreparationTask: Task<Void, Never>?
+    @State private var filePreparationID = UUID()
 
     var body: some View {
         NavigationStack {
@@ -51,7 +57,12 @@ struct PlayerHomeView: View {
             allowsMultipleSelection: false,
             onCompletion: handleFileImport
         )
-        .onOpenURL(perform: openSelectedURL)
+        .overlay {
+            if isPreparingFile {
+                filePreparationOverlay
+            }
+        }
+        .onOpenURL(perform: queueOpenURL)
         .alert("動画を開けませんでした", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
             set: { if !$0 { viewModel.errorMessage = nil } }
@@ -61,12 +72,52 @@ struct PlayerHomeView: View {
             Text(viewModel.errorMessage ?? "")
         }
         .onAppear {
+            hasAppeared = true
             viewModel.attachStore(recentStore)
+            openPendingURLIfReady()
         }
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase != .active {
+            if newPhase == .active {
+                openPendingURLIfReady()
+            } else {
                 viewModel.saveCurrentPosition()
             }
+        }
+    }
+
+    private var filePreparationOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.25)
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                ProgressView()
+
+                Text("動画を準備中…")
+                    .font(.headline)
+
+                Text("iCloudから取得しています")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let preparingFileName {
+                    Text(preparingFileName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Button("キャンセル") {
+                    cancelFilePreparation()
+                }
+                .buttonStyle(.bordered)
+            }
+            .frame(maxWidth: 260)
+            .padding(20)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .padding()
         }
     }
 
@@ -205,12 +256,104 @@ struct PlayerHomeView: View {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            openSelectedURL(url)
+            queueOpenURL(url)
         case .failure(let error):
             if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
                 return
             }
             viewModel.setError("選択したファイルを開けませんでした。")
+        }
+    }
+
+    private func queueOpenURL(_ url: URL) {
+        pendingOpenURL = url
+        openPendingURLIfReady()
+    }
+
+    private func openPendingURLIfReady() {
+        guard hasAppeared, scenePhase == .active, let url = pendingOpenURL else { return }
+        pendingOpenURL = nil
+        prepareAndOpenURL(url)
+    }
+
+    private func prepareAndOpenURL(_ url: URL) {
+        filePreparationTask?.cancel()
+        filePreparationID = UUID()
+        filePreparationTask = nil
+        isPreparingFile = false
+        preparingFileName = nil
+
+        if isFileReadyToOpen(url) {
+            openSelectedURL(url)
+            return
+        }
+
+        let preparationID = UUID()
+        filePreparationID = preparationID
+        preparingFileName = url.lastPathComponent
+        isPreparingFile = true
+        viewModel.errorMessage = nil
+
+        filePreparationTask = Task { @MainActor in
+            defer {
+                if filePreparationID == preparationID {
+                    isPreparingFile = false
+                    preparingFileName = nil
+                    filePreparationTask = nil
+                }
+            }
+
+            do {
+                let preparedURL = try await prepareFileForPlayback(url)
+                guard !Task.isCancelled, filePreparationID == preparationID else { return }
+                if scenePhase == .active {
+                    openSelectedURL(preparedURL)
+                } else {
+                    pendingOpenURL = preparedURL
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                guard filePreparationID == preparationID else { return }
+                viewModel.setError("動画を準備できませんでした。ファイルAppでダウンロード状況を確認してから、もう一度試してください。")
+            }
+        }
+    }
+
+    private func cancelFilePreparation() {
+        filePreparationID = UUID()
+        filePreparationTask?.cancel()
+        filePreparationTask = nil
+        isPreparingFile = false
+        preparingFileName = nil
+    }
+
+    private func prepareFileForPlayback(_ url: URL) async throws -> URL {
+        let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccessSecurityScope {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        if isFileReadyToOpen(url) {
+            return url
+        }
+
+        do {
+            try FileManager.default.startDownloadingUbiquitousItem(at: url)
+        } catch {
+            guard isFileReadyToOpen(url) else { throw error }
+        }
+
+        while true {
+            try Task.checkCancellation()
+
+            if isFileReadyToOpen(url) {
+                return url
+            }
+
+            try await Task.sleep(nanoseconds: 500_000_000)
         }
     }
 
@@ -231,6 +374,28 @@ struct PlayerHomeView: View {
             isPlayerPresented = true
         } catch {
             viewModel.setError("選択したファイルを開けませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
+        }
+    }
+
+    private func isFileReadyToOpen(_ url: URL) -> Bool {
+        let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
+        defer {
+            if didAccessSecurityScope {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        let resourceValues = try? url.resourceValues(forKeys: [
+            .isUbiquitousItemKey,
+            .ubiquitousItemDownloadingStatusKey
+        ])
+        guard resourceValues?.isUbiquitousItem == true else { return true }
+
+        switch resourceValues?.ubiquitousItemDownloadingStatus {
+        case .current, .downloaded:
+            return true
+        default:
+            return false
         }
     }
 
