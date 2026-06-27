@@ -147,13 +147,18 @@ final class PlayerViewModel: ObservableObject {
 
     func saveCurrentPosition() {
         guard let id = currentRecentVideoID else { return }
+        let seconds = player.currentTime().seconds
+
+        if didFinishPlayback, seconds.isFinite, !isAtPlaybackEnd(seconds) {
+            didFinishPlayback = false
+        }
+
         if didFinishPlayback {
             currentPlaybackPosition = 0
             recentStore?.updatePosition(for: id, position: 0)
             return
         }
 
-        let seconds = player.currentTime().seconds
         guard seconds.isFinite else { return }
         currentPlaybackPosition = seconds
         recentStore?.updatePosition(for: id, position: seconds)
@@ -434,6 +439,14 @@ final class PlayerViewModel: ObservableObject {
         currentPlaybackPosition = 0
         recentStore?.updatePosition(for: id, position: 0)
         updateNowPlayingInfo(elapsedTime: 0, playbackRate: 0)
+    }
+
+    private func isAtPlaybackEnd(_ seconds: TimeInterval) -> Bool {
+        guard let duration = player.currentItem?.duration.seconds, duration.isFinite else {
+            return true
+        }
+
+        return duration - seconds <= 0.25
     }
 
     private func removePeriodicTimeObserver() {
