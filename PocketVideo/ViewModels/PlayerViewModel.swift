@@ -32,6 +32,7 @@ final class PlayerViewModel: ObservableObject {
     private var scopedURL: URL?
     private weak var recentStore: RecentVideoStore?
     private var lastPositionSaveAt = Date.distantPast
+    private let positionSaveInterval: TimeInterval = 1
     private var didFinishPlayback = false
 
     init() {
@@ -412,7 +413,7 @@ final class PlayerViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.updateCurrentPlaybackPosition()
-                if Date().timeIntervalSince(self.lastPositionSaveAt) >= 5 {
+                if Date().timeIntervalSince(self.lastPositionSaveAt) >= self.positionSaveInterval {
                     self.saveCurrentPosition()
                     self.lastPositionSaveAt = Date()
                 }

@@ -31,8 +31,26 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     }
 }
 
+enum AppOrientationLock {
+    static var supportedOrientations: UIInterfaceOrientationMask = .portrait
+}
+
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return .all
+        }
+
+        return AppOrientationLock.supportedOrientations
+    }
+}
+
 @main
 struct PocketVideoApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var recentStore = RecentVideoStore()
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
 
