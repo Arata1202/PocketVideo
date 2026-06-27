@@ -59,7 +59,8 @@ final class PlayerViewModel: ObservableObject {
         recentStore = store
     }
 
-    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) {
+    @discardableResult
+    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) -> Bool {
         saveCurrentPosition()
         isLoading = true
         errorMessage = nil
@@ -85,7 +86,7 @@ final class PlayerViewModel: ObservableObject {
             scopedURL = url
         } else if !FileManager.default.isReadableFile(atPath: url.path) {
             setError("このファイルにアクセスできません。ファイルAppからもう一度選択してください。")
-            return
+            return false
         }
 
         currentRecentVideoID = recentVideoID
@@ -109,6 +110,8 @@ final class PlayerViewModel: ObservableObject {
                 self.player.replaceCurrentItem(with: item)
             }
         }
+
+        return true
     }
 
     func closeCurrentVideo() {

@@ -231,7 +231,10 @@ struct PlayerHomeView: View {
         do {
             let recent = try recentStore.addOrUpdate(url: url)
             let storedURL = try recentStore.resolveURL(for: recent)
-            viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
+            guard viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title) else {
+                recentStore.remove(recent)
+                return
+            }
             isPlayerPresented = true
         } catch {
             viewModel.setError("選択したファイルを開けませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
@@ -241,7 +244,10 @@ struct PlayerHomeView: View {
     private func openRecent(_ video: RecentVideo) {
         do {
             let url = try recentStore.resolveURL(for: video)
-            viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id, displayTitle: video.title)
+            guard viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id, displayTitle: video.title) else {
+                recentStore.remove(video)
+                return
+            }
             isPlayerPresented = true
         } catch {
             recentStore.remove(video)
