@@ -39,6 +39,46 @@ final class RecentVideoStoreTests: XCTestCase {
         XCTAssertEqual(store.videos[0].lastPosition, 12, accuracy: 0.01)
     }
 
+    func testAddOrUpdatePreservesExistingPositionWhenPositionIsOmitted() throws {
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let url = try makeVideoFile(named: "sample.mp4")
+
+        let first = try store.addOrUpdate(url: url, position: 42)
+        let updated = try store.addOrUpdate(url: url)
+
+        XCTAssertEqual(store.videos.count, 1)
+        XCTAssertEqual(first.id, updated.id)
+        XCTAssertEqual(store.videos[0].lastPosition, 42, accuracy: 0.01)
+    }
+
+    func testAddOrUpdateReusesExistingItemForSameContentAtDifferentPath() throws {
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let firstURL = try makeVideoFile(named: "sample.mp4", contents: "same video content")
+        let secondURL = try makeVideoFile(named: "renamed.mp4", contents: "same video content")
+
+        let first = try store.addOrUpdate(url: firstURL, position: 42)
+        let updated = try store.addOrUpdate(url: secondURL, position: 12)
+
+        XCTAssertEqual(store.videos.count, 1)
+        XCTAssertEqual(first.id, updated.id)
+        XCTAssertEqual(store.videos[0].title, "renamed.mp4")
+        XCTAssertEqual(store.videos[0].lastPosition, 12, accuracy: 0.01)
+    }
+
+    func testAddOrUpdatePreservesExistingPositionForSameContentAtDifferentPathWhenPositionIsOmitted() throws {
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let firstURL = try makeVideoFile(named: "sample.mp4", contents: "same video content")
+        let secondURL = try makeVideoFile(named: "renamed.mp4", contents: "same video content")
+
+        let first = try store.addOrUpdate(url: firstURL, position: 42)
+        let updated = try store.addOrUpdate(url: secondURL)
+
+        XCTAssertEqual(store.videos.count, 1)
+        XCTAssertEqual(first.id, updated.id)
+        XCTAssertEqual(store.videos[0].title, "renamed.mp4")
+        XCTAssertEqual(store.videos[0].lastPosition, 42, accuracy: 0.01)
+    }
+
     func testKeepsMostRecentItemsWithinLimit() throws {
         let store = RecentVideoStore(userDefaults: userDefaults, maxItems: 2)
 
@@ -70,9 +110,44 @@ final class RecentVideoStoreTests: XCTestCase {
         XCTAssertTrue(reloadedStore.videos.isEmpty)
     }
 
-    private func makeVideoFile(named name: String) throws -> URL {
+    func testLoadDeduplicatesLegacyVideosWithSameContent() throws {
+        let firstURL = try makeVideoFile(named: "first.mp4", contents: "same legacy video")
+        let duplicateURL = try makeVideoFile(named: "duplicate.mp4", contents: "same legacy video")
+        let videos = [
+            RecentVideo(
+                title: "first.mp4",
+                sourceKey: firstURL.standardizedFileURL.path,
+                bookmarkData: try bookmarkData(for: firstURL),
+                lastPosition: 30
+            ),
+            RecentVideo(
+                title: "duplicate.mp4",
+                sourceKey: duplicateURL.standardizedFileURL.path,
+                bookmarkData: try bookmarkData(for: duplicateURL),
+                lastPosition: 75
+            )
+        ]
+        let data = try JSONEncoder().encode(videos)
+        userDefaults.set(data, forKey: "recentVideos")
+
+        let store = RecentVideoStore(userDefaults: userDefaults)
+
+        XCTAssertEqual(store.videos.count, 1)
+        XCTAssertEqual(store.videos[0].title, "first.mp4")
+        XCTAssertNotNil(store.videos[0].contentFingerprint)
+    }
+
+    private func makeVideoFile(named name: String, contents: String = "test") throws -> URL {
         let url = temporaryDirectory.appendingPathComponent(name)
-        try Data("test".utf8).write(to: url)
+        try Data(contents.utf8).write(to: url)
         return url
+    }
+
+    private func bookmarkData(for url: URL) throws -> Data {
+        try url.bookmarkData(
+            options: [],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
     }
 }

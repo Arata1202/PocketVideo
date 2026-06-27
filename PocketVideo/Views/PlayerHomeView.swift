@@ -229,9 +229,15 @@ struct PlayerHomeView: View {
 
     private func openSelectedURL(_ url: URL) {
         do {
+            viewModel.saveCurrentPosition()
             let recent = try recentStore.addOrUpdate(url: url)
             let storedURL = try recentStore.resolveURL(for: recent)
-            guard viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title) else {
+            guard viewModel.open(
+                url: storedURL,
+                resumePosition: recent.lastPosition,
+                recentVideoID: recent.id,
+                displayTitle: recent.title
+            ) else {
                 recentStore.remove(recent)
                 return
             }
