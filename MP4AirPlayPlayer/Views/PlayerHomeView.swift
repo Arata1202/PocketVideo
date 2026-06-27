@@ -76,7 +76,7 @@ struct PlayerHomeView: View {
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .background(Color(uiColor: .systemBackground))
     }
 
     private var playerContent: some View {
@@ -97,7 +97,7 @@ struct PlayerHomeView: View {
                     }
                     .listStyle(.inset)
                     .scrollContentBackground(.hidden)
-                    .background(Color(uiColor: .systemGroupedBackground))
+                    .background(Color(uiColor: .systemBackground))
                 }
             }
             .toolbar(isLandscapeVideoMode ? .hidden : .visible, for: .navigationBar)
