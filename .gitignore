@@ -8,7 +8,7 @@ DerivedData/
 *.xcuserstate
 
 # XcodeGen
-MP4AirPlayPlayer/Info.plist
+PocketVideo/Info.plist
 
 # Swift Package Manager
 .build/

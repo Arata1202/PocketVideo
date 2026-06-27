@@ -1,4 +1,4 @@
-name: MP4AirPlayPlayer
+name: PocketVideo
 options:
   bundleIdPrefix: com.arata1202
   developmentLanguage: ja
@@ -9,17 +9,17 @@ settings:
     MARKETING_VERSION: 1.0.0
     CURRENT_PROJECT_VERSION: 1
 targets:
-  MP4AirPlayPlayer:
+  PocketVideo:
     type: application
     platform: iOS
     sources:
-      - MP4AirPlayPlayer
+      - PocketVideo
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: com.arata1202.PocketVideo
     info:
-      path: MP4AirPlayPlayer/Info.plist
+      path: PocketVideo/Info.plist
       properties:
         CFBundleName: Pocket Video
         CFBundleDisplayName: Pocket Video
@@ -51,13 +51,13 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
-  MP4AirPlayPlayerTests:
+  PocketVideoTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - MP4AirPlayPlayerTests
+      - PocketVideoTests
     dependencies:
-      - target: MP4AirPlayPlayer
+      - target: PocketVideo
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.arata1202.PocketVideoTests

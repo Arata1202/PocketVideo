@@ -1,5 +1,5 @@
 import Foundation
-@testable import MP4AirPlayPlayer
+@testable import PocketVideo
 import XCTest
 
 @MainActor

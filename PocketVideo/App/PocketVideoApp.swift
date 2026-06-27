@@ -32,7 +32,7 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 }
 
 @main
-struct MP4AirPlayPlayerApp: App {
+struct PocketVideoApp: App {
     @StateObject private var recentStore = RecentVideoStore()
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
 

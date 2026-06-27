@@ -28,7 +28,7 @@ Generate the Xcode project:
 ```bash
 brew install xcodegen
 xcodegen generate
-open MP4AirPlayPlayer.xcodeproj
+open PocketVideo.xcodeproj
 ```
 
 Then select a development team in Xcode and build the app on Simulator or a real device.
