@@ -37,6 +37,8 @@ final class PlayerViewModel: ObservableObject {
 
     init() {
         player.allowsExternalPlayback = true
+        player.usesExternalPlaybackWhileExternalScreenIsActive = true
+        player.externalPlaybackVideoGravity = .resizeAspect
         configureAudioSession()
         configureRemoteCommands()
         observePlayerPlaybackState()
