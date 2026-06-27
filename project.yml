@@ -25,6 +25,16 @@ targets:
         CFBundleDisplayName: Pocket Video
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Video
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.mpeg-4
+              - com.apple.quicktime-movie
+              - com.apple.m4v-video
+              - public.3gpp
+              - public.3gpp2
         UILaunchScreen: {}
         UIBackgroundModes:
           - audio
@@ -41,3 +51,13 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+  MP4AirPlayPlayerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - MP4AirPlayPlayerTests
+    dependencies:
+      - target: MP4AirPlayPlayer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.arata1202.PocketVideoTests

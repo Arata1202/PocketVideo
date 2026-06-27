@@ -5,9 +5,12 @@ final class RecentVideoStore: ObservableObject {
     @Published private(set) var videos: [RecentVideo] = []
 
     private let storageKey = "recentVideos"
-    private let maxItems = 10
+    private let maxItems: Int
+    private let userDefaults: UserDefaults
 
-    init() {
+    init(userDefaults: UserDefaults = .standard, maxItems: Int = 10) {
+        self.userDefaults = userDefaults
+        self.maxItems = maxItems
         load()
     }
 
@@ -96,13 +99,13 @@ final class RecentVideoStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return }
+        guard let data = userDefaults.data(forKey: storageKey) else { return }
         videos = (try? JSONDecoder().decode([RecentVideo].self, from: data)) ?? []
     }
 
     private func save() {
         guard let data = try? JSONEncoder().encode(videos) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        userDefaults.set(data, forKey: storageKey)
     }
 }
 

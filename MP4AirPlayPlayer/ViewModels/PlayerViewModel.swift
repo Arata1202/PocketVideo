@@ -16,11 +16,17 @@ final class PlayerViewModel: ObservableObject {
     @Published var currentPlaybackPosition: TimeInterval = 0
     @Published var videoAspectRatio: CGFloat?
 
+    private struct RemoteCommandTarget {
+        let command: MPRemoteCommand
+        let target: Any
+    }
+
     private var timeObserver: Any?
     private var playbackEndObserver: NSObjectProtocol?
     private var playerItemStatusObservation: NSKeyValueObservation?
     private var aspectRatioLoadTask: Task<Void, Never>?
     private var loadingIndicatorTask: Task<Void, Never>?
+    private var remoteCommandTargets: [RemoteCommandTarget] = []
     private var scopedURL: URL?
     private weak var recentStore: RecentVideoStore?
     private var lastPositionSaveAt = Date.distantPast
@@ -41,6 +47,7 @@ final class PlayerViewModel: ObservableObject {
             playerItemStatusObservation?.invalidate()
             aspectRatioLoadTask?.cancel()
             loadingIndicatorTask?.cancel()
+            removeRemoteCommandTargets()
             stopSecurityScopedAccess()
             if let playbackEndObserver {
                 NotificationCenter.default.removeObserver(playbackEndObserver)
@@ -59,11 +66,26 @@ final class PlayerViewModel: ObservableObject {
         aspectRatioLoadTask?.cancel()
         scheduleLoadingIndicator()
         removePeriodicTimeObserver()
+        playerItemStatusObservation?.invalidate()
+        playerItemStatusObservation = nil
         player.pause()
+        player.replaceCurrentItem(with: nil)
+        clearNowPlayingInfo()
 
         stopSecurityScopedAccess()
+        hasVideo = false
+        currentRecentVideoID = nil
+        currentVideoTitle = nil
+        currentPlaybackPosition = 0
+        videoAspectRatio = nil
+        lastPositionSaveAt = .distantPast
+        didFinishPlayback = false
+
         if url.startAccessingSecurityScopedResource() {
             scopedURL = url
+        } else if !FileManager.default.isReadableFile(atPath: url.path) {
+            setError("このファイルにアクセスできません。ファイルAppからもう一度選択してください。")
+            return
         }
 
         currentRecentVideoID = recentVideoID
@@ -83,25 +105,8 @@ final class PlayerViewModel: ObservableObject {
                 let item = AVPlayerItem(asset: asset)
                 item.externalMetadata = Self.metadataItems(title: self.currentVideoTitle ?? url.lastPathComponent)
                 self.videoAspectRatio = aspectRatio
-                self.observePlayerItemStatus(item)
+                self.observePlayerItemStatus(item, resumePosition: resumePosition)
                 self.player.replaceCurrentItem(with: item)
-
-                if resumePosition > 0 {
-                    let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
-                    self.player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                        Task { @MainActor in
-                            self?.player.play()
-                            self?.updateNowPlayingInfo()
-                        }
-                    }
-                } else {
-                    self.player.play()
-                    self.updateNowPlayingInfo()
-                }
-
-                self.hasVideo = true
-                self.addPeriodicTimeObserver()
-                self.finishLoading()
             }
         }
     }
@@ -173,18 +178,63 @@ final class PlayerViewModel: ObservableObject {
         showsLoadingIndicator = false
     }
 
-    private func observePlayerItemStatus(_ item: AVPlayerItem) {
+    private func observePlayerItemStatus(_ item: AVPlayerItem, resumePosition: TimeInterval) {
         playerItemStatusObservation?.invalidate()
-        playerItemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
-            guard item.status == .failed else { return }
+        var didStartPlayback = false
 
+        playerItemStatusObservation = item.observe(\.status, options: [.initial, .new]) { [weak self, weak item] observedItem, _ in
             Task { @MainActor in
-                self?.setError("この動画は再生できません。対応拡張子でも、動画のコーデックによっては再生できない場合があります。")
+                guard let self, let item, observedItem === item, self.player.currentItem === item else { return }
+
+                switch observedItem.status {
+                case .readyToPlay:
+                    guard !didStartPlayback else { return }
+                    didStartPlayback = true
+                    self.startPlayback(resumePosition: resumePosition)
+                case .failed:
+                    self.handlePlayerItemFailure()
+                default:
+                    break
+                }
             }
         }
     }
 
+    private func startPlayback(resumePosition: TimeInterval) {
+        hasVideo = true
+        didFinishPlayback = false
+        addPeriodicTimeObserver()
+        finishLoading()
+
+        if resumePosition > 0 {
+            let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
+            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.player.play()
+                    self.updateNowPlayingInfo()
+                }
+            }
+        } else {
+            player.play()
+            updateNowPlayingInfo()
+        }
+    }
+
+    private func handlePlayerItemFailure() {
+        removePeriodicTimeObserver()
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        hasVideo = false
+        currentPlaybackPosition = 0
+        videoAspectRatio = nil
+        clearNowPlayingInfo()
+        setError("この動画は再生できません。対応拡張子でも、動画のコーデックによっては再生できない場合があります。")
+    }
+
     private func configureRemoteCommands() {
+        removeRemoteCommandTargets()
+
         let commandCenter = MPRemoteCommandCenter.shared()
         commandCenter.playCommand.isEnabled = true
         commandCenter.pauseCommand.isEnabled = true
@@ -194,7 +244,7 @@ final class PlayerViewModel: ObservableObject {
         commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 10)]
 
-        commandCenter.playCommand.addTarget { [weak self] _ in
+        let playTarget = commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 self?.didFinishPlayback = false
                 self?.player.play()
@@ -202,8 +252,9 @@ final class PlayerViewModel: ObservableObject {
             }
             return .success
         }
+        remoteCommandTargets.append(RemoteCommandTarget(command: commandCenter.playCommand, target: playTarget))
 
-        commandCenter.pauseCommand.addTarget { [weak self] _ in
+        let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 self?.player.pause()
                 self?.saveCurrentPosition()
@@ -211,8 +262,9 @@ final class PlayerViewModel: ObservableObject {
             }
             return .success
         }
+        remoteCommandTargets.append(RemoteCommandTarget(command: commandCenter.pauseCommand, target: pauseTarget))
 
-        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+        let togglePlayPauseTarget = commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
                 if self.player.rate == 0 {
@@ -226,8 +278,9 @@ final class PlayerViewModel: ObservableObject {
             }
             return .success
         }
+        remoteCommandTargets.append(RemoteCommandTarget(command: commandCenter.togglePlayPauseCommand, target: togglePlayPauseTarget))
 
-        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+        let skipForwardTarget = commandCenter.skipForwardCommand.addTarget { [weak self] event in
             guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
 
             Task { @MainActor in
@@ -235,8 +288,9 @@ final class PlayerViewModel: ObservableObject {
             }
             return .success
         }
+        remoteCommandTargets.append(RemoteCommandTarget(command: commandCenter.skipForwardCommand, target: skipForwardTarget))
 
-        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+        let skipBackwardTarget = commandCenter.skipBackwardCommand.addTarget { [weak self] event in
             guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
 
             Task { @MainActor in
@@ -244,6 +298,14 @@ final class PlayerViewModel: ObservableObject {
             }
             return .success
         }
+        remoteCommandTargets.append(RemoteCommandTarget(command: commandCenter.skipBackwardCommand, target: skipBackwardTarget))
+    }
+
+    private func removeRemoteCommandTargets() {
+        remoteCommandTargets.forEach { target in
+            target.command.removeTarget(target.target)
+        }
+        remoteCommandTargets.removeAll()
     }
 
     private func updateNowPlayingInfo(elapsedTime overrideElapsedTime: TimeInterval? = nil, playbackRate overridePlaybackRate: Float? = nil) {

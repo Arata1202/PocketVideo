@@ -6,6 +6,11 @@ import UniformTypeIdentifiers
 private let supportedVideoContentTypes = ["mp4", "mov", "m4v", "3gp", "3g2"]
     .compactMap { UTType(filenameExtension: $0) }
 
+private enum AppLinks {
+    static let support = URL(string: "https://realunivlog.com/")!
+    static let privacyPolicy = URL(string: "https://realunivlog.com/privacy")!
+}
+
 struct PlayerHomeView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
     @Environment(\.scenePhase) private var scenePhase
@@ -45,6 +50,7 @@ struct PlayerHomeView: View {
             allowsMultipleSelection: false,
             onCompletion: handleFileImport
         )
+        .onOpenURL(perform: openSelectedURL)
         .alert("動画を開けませんでした", isPresented: Binding(
             get: { viewModel.errorMessage != nil },
             set: { if !$0 { viewModel.errorMessage = nil } }
@@ -173,52 +179,62 @@ struct PlayerHomeView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(recentStore.videos) { video in
-                    HStack(spacing: 12) {
-                        Image(systemName: "film")
-                            .foregroundStyle(.secondary)
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(video.title)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-
-                            if let playbackText = playbackText(for: video) {
-                                Text(playbackText)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    Button {
                         openRecent(video)
+                    } label: {
+                        recentVideoRow(video)
                     }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(.isButton)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(accessibilityLabel(for: video))
+                    .accessibilityHint("開いて再生します")
                 }
                 .onDelete(perform: deleteRecent)
             }
         }
     }
 
+    private func recentVideoRow(_ video: RecentVideo) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "film")
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(video.title)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                if let playbackText = playbackText(for: video) {
+                    Text(playbackText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .contentShape(Rectangle())
+    }
+
     private func handleFileImport(_ result: Result<[URL], Error>) {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            do {
-                let recent = try recentStore.addOrUpdate(url: url)
-                let storedURL = try recentStore.resolveURL(for: recent)
-                viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
-                isPlayerPresented = true
-            } catch {
-                viewModel.setError("選択したファイルを開けませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
-            }
+            openSelectedURL(url)
         case .failure(let error):
             if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
                 return
             }
             viewModel.setError("選択したファイルを開けませんでした。")
+        }
+    }
+
+    private func openSelectedURL(_ url: URL) {
+        do {
+            let recent = try recentStore.addOrUpdate(url: url)
+            let storedURL = try recentStore.resolveURL(for: recent)
+            viewModel.open(url: storedURL, recentVideoID: recent.id, displayTitle: recent.title)
+            isPlayerPresented = true
+        } catch {
+            viewModel.setError("選択したファイルを開けませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
         }
     }
 
@@ -245,6 +261,14 @@ struct PlayerHomeView: View {
         }
 
         return resumeText(for: video.lastPosition)
+    }
+
+    private func accessibilityLabel(for video: RecentVideo) -> String {
+        if let playbackText = playbackText(for: video) {
+            return "\(video.title), \(playbackText)"
+        }
+
+        return video.title
     }
 
     private func resumeText(for position: TimeInterval) -> String? {
@@ -295,6 +319,16 @@ private struct SettingsView: View {
                 Section("アプリ情報") {
                     LabeledContent("対応形式", value: "MP4, MOV, M4V, 3GP, 3G2")
                     LabeledContent("バージョン", value: appVersion)
+                }
+
+                Section("サポート") {
+                    Link(destination: AppLinks.support) {
+                        Label("サポート", systemImage: "questionmark.circle")
+                    }
+
+                    Link(destination: AppLinks.privacyPolicy) {
+                        Label("プライバシーポリシー", systemImage: "hand.raised")
+                    }
                 }
             }
             .navigationTitle("設定")
