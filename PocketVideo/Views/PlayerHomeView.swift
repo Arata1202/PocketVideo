@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 
 private let supportedVideoContentTypes = ["mp4", "mov", "m4v", "3gp", "3g2"]
     .compactMap { UTType(filenameExtension: $0) }
+private let minimumResumeDisplayPosition: TimeInterval = 1
 
 private enum AppLinks {
     static let support = URL(string: "https://realunivlog.com/")!
@@ -72,7 +73,7 @@ struct PlayerHomeView: View {
     private var homeContent: some View {
         List {
             openVideoSection
-            recentList
+            recentList(showsNowPlaying: false)
         }
         .listStyle(.inset)
         .scrollContentBackground(.hidden)
@@ -87,7 +88,7 @@ struct PlayerHomeView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.black)
 
-                recentList
+                recentList(showsNowPlaying: true)
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
@@ -158,7 +159,7 @@ struct PlayerHomeView: View {
     }
 
     @ViewBuilder
-    private var recentList: some View {
+    private func recentList(showsNowPlaying: Bool) -> some View {
         Section("最近開いた動画") {
             if recentStore.videos.isEmpty {
                 Text("まだありません")
@@ -168,10 +169,10 @@ struct PlayerHomeView: View {
                     Button {
                         openRecent(video)
                     } label: {
-                        recentVideoRow(video)
+                        recentVideoRow(video, showsNowPlaying: showsNowPlaying)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(accessibilityLabel(for: video))
+                    .accessibilityLabel(accessibilityLabel(for: video, showsNowPlaying: showsNowPlaying))
                     .accessibilityHint("開いて再生します")
                 }
                 .onDelete(perform: deleteRecent)
@@ -179,7 +180,7 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func recentVideoRow(_ video: RecentVideo) -> some View {
+    private func recentVideoRow(_ video: RecentVideo, showsNowPlaying: Bool) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "film")
                 .foregroundStyle(.secondary)
@@ -189,7 +190,7 @@ struct PlayerHomeView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
 
-                if let playbackText = playbackText(for: video) {
+                if let playbackText = playbackText(for: video, showsNowPlaying: showsNowPlaying) {
                     Text(playbackText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -253,16 +254,16 @@ struct PlayerHomeView: View {
             .forEach(recentStore.remove)
     }
 
-    private func playbackText(for video: RecentVideo) -> String? {
-        if viewModel.hasVideo, video.id == viewModel.currentRecentVideoID {
+    private func playbackText(for video: RecentVideo, showsNowPlaying: Bool) -> String? {
+        if showsNowPlaying, viewModel.hasVideo, video.id == viewModel.currentRecentVideoID {
             return "再生中 \(formatDuration(viewModel.currentPlaybackPosition))"
         }
 
         return resumeText(for: video.lastPosition)
     }
 
-    private func accessibilityLabel(for video: RecentVideo) -> String {
-        if let playbackText = playbackText(for: video) {
+    private func accessibilityLabel(for video: RecentVideo, showsNowPlaying: Bool) -> String {
+        if let playbackText = playbackText(for: video, showsNowPlaying: showsNowPlaying) {
             return "\(video.title), \(playbackText)"
         }
 
@@ -270,7 +271,7 @@ struct PlayerHomeView: View {
     }
 
     private func resumeText(for position: TimeInterval) -> String? {
-        guard position >= 5 else { return nil }
+        guard position >= minimumResumeDisplayPosition else { return nil }
         return "\(formatDuration(position)) から再開"
     }
 

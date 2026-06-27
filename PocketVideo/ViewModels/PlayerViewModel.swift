@@ -87,7 +87,6 @@ final class PlayerViewModel: ObservableObject {
         currentRecentVideoID = nil
         currentVideoTitle = nil
         currentPlaybackPosition = 0
-        videoAspectRatio = nil
         lastPositionSaveAt = .distantPast
         didFinishPlayback = false
 
