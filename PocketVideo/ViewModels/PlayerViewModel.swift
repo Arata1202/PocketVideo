@@ -4,13 +4,19 @@ import Foundation
 import MediaPlayer
 import SwiftUI
 
+struct PlaybackAlert: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}
+
 @MainActor
 final class PlayerViewModel: ObservableObject {
     @Published var player = AVPlayer()
     @Published var hasVideo = false
     @Published var isLoading = false
     @Published var showsLoadingIndicator = false
-    @Published var errorMessage: String?
+    @Published var playbackAlert: PlaybackAlert?
     @Published var currentRecentVideoID: RecentVideo.ID?
     @Published var currentVideoTitle: String?
     @Published var currentPlaybackPosition: TimeInterval = 0
@@ -26,6 +32,7 @@ final class PlayerViewModel: ObservableObject {
     private var playbackFailureObserver: NSObjectProtocol?
     private var playerItemStatusObservation: NSKeyValueObservation?
     private var playerTimeControlStatusObservation: NSKeyValueObservation?
+    private var externalPlaybackObservation: NSKeyValueObservation?
     private var aspectRatioLoadTask: Task<Void, Never>?
     private var loadingIndicatorTask: Task<Void, Never>?
     private var remoteCommandTargets: [RemoteCommandTarget] = []
@@ -34,10 +41,11 @@ final class PlayerViewModel: ObservableObject {
     private var lastPositionSaveAt = Date.distantPast
     private let positionSaveInterval: TimeInterval = 1
     private var didFinishPlayback = false
+    private var didUseExternalPlayback = false
 
     init() {
         player.allowsExternalPlayback = true
-        player.usesExternalPlaybackWhileExternalScreenIsActive = true
+        player.usesExternalPlaybackWhileExternalScreenIsActive = false
         player.externalPlaybackVideoGravity = .resizeAspect
         configureAudioSession()
         configureRemoteCommands()
@@ -52,6 +60,7 @@ final class PlayerViewModel: ObservableObject {
             }
             playerItemStatusObservation?.invalidate()
             playerTimeControlStatusObservation?.invalidate()
+            externalPlaybackObservation?.invalidate()
             aspectRatioLoadTask?.cancel()
             loadingIndicatorTask?.cancel()
             removeRemoteCommandTargets()
@@ -73,7 +82,7 @@ final class PlayerViewModel: ObservableObject {
     func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) -> Bool {
         saveCurrentPosition()
         isLoading = true
-        errorMessage = nil
+        playbackAlert = nil
         aspectRatioLoadTask?.cancel()
         scheduleLoadingIndicator()
         removePeriodicTimeObserver()
@@ -91,11 +100,15 @@ final class PlayerViewModel: ObservableObject {
         currentPlaybackPosition = 0
         lastPositionSaveAt = .distantPast
         didFinishPlayback = false
+        didUseExternalPlayback = false
 
         if url.startAccessingSecurityScopedResource() {
             scopedURL = url
         } else if !FileManager.default.isReadableFile(atPath: url.path) {
-            setError("このファイルにアクセスできません。ファイルAppからもう一度選択してください。")
+            setError(
+                title: "ファイルにアクセスできません",
+                message: "ファイルAppからもう一度選択してください。"
+            )
             return false
         }
 
@@ -104,6 +117,7 @@ final class PlayerViewModel: ObservableObject {
         currentPlaybackPosition = resumePosition
         lastPositionSaveAt = .distantPast
         didFinishPlayback = false
+        didUseExternalPlayback = false
 
         let asset = AVURLAsset(url: url)
         aspectRatioLoadTask = Task { [weak self] in
@@ -142,6 +156,7 @@ final class PlayerViewModel: ObservableObject {
         videoAspectRatio = nil
         lastPositionSaveAt = .distantPast
         didFinishPlayback = false
+        didUseExternalPlayback = false
         clearNowPlayingInfo()
         setRemoteCommandsEnabled(false)
         stopSecurityScopedAccess()
@@ -171,8 +186,8 @@ final class PlayerViewModel: ObservableObject {
         scopedURL = nil
     }
 
-    func setError(_ message: String) {
-        errorMessage = message
+    func setError(title: String = "動画を再生できませんでした", message: String) {
+        playbackAlert = PlaybackAlert(title: title, message: message)
         finishLoading()
     }
 
@@ -250,7 +265,26 @@ final class PlayerViewModel: ObservableObject {
         videoAspectRatio = nil
         clearNowPlayingInfo()
         setRemoteCommandsEnabled(false)
-        setError("この動画は再生できません。対応拡張子でも、動画のコーデックによっては再生できない場合があります。")
+        setError(playbackFailureAlert())
+    }
+
+    private func setError(_ alert: PlaybackAlert) {
+        playbackAlert = alert
+        finishLoading()
+    }
+
+    private func playbackFailureAlert() -> PlaybackAlert {
+        if player.isExternalPlaybackActive || didUseExternalPlayback {
+            return PlaybackAlert(
+                title: "AirPlayで再生できませんでした",
+                message: "接続先の機器では、この動画をAirPlayで直接再生できない可能性があります。iPhoneのコントロールセンターから「画面ミラーリング」を選んで再生してください。"
+            )
+        }
+
+        return PlaybackAlert(
+            title: "動画を再生できませんでした",
+            message: "ファイルが壊れているか、iPhoneで再生できない形式の可能性があります。"
+        )
     }
 
     private func configureRemoteCommands() {
@@ -477,6 +511,15 @@ final class PlayerViewModel: ObservableObject {
                     self.saveCurrentPosition()
                 }
                 self.updateNowPlayingInfo()
+            }
+        }
+
+        externalPlaybackObservation = player.observe(\.isExternalPlaybackActive, options: [.initial, .new]) { [weak self] player, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if player.isExternalPlaybackActive {
+                    self.didUseExternalPlayback = true
+                }
             }
         }
     }

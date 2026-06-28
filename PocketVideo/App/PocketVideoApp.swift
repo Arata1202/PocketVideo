@@ -46,6 +46,23 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
         return AppOrientationLock.supportedOrientations
     }
+
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(
+            name: nil,
+            sessionRole: connectingSceneSession.role
+        )
+
+        if connectingSceneSession.role == .windowExternalDisplayNonInteractive {
+            configuration.delegateClass = ExternalDisplaySceneDelegate.self
+        }
+
+        return configuration
+    }
 }
 
 @main

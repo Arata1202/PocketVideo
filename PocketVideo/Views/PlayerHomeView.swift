@@ -1,3 +1,4 @@
+import AVFoundation
 import AVKit
 import SwiftUI
 import UIKit
@@ -40,7 +41,7 @@ struct PlayerHomeView: View {
                     }
                 }
                 .navigationDestination(isPresented: $isPlayerPresented) {
-                    playerContent
+                    regularPlayerContent
                         .onDisappear {
                             if !isPlayerPresented {
                                 viewModel.closeCurrentVideo()
@@ -64,18 +65,21 @@ struct PlayerHomeView: View {
             }
         }
         .onOpenURL(perform: queueOpenURL)
-        .alert("動画を開けませんでした", isPresented: Binding(
-            get: { viewModel.errorMessage != nil },
-            set: { if !$0 { viewModel.errorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(viewModel.errorMessage ?? "")
+        .alert(item: $viewModel.playbackAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("OK"))
+            )
         }
         .onAppear {
             hasAppeared = true
             viewModel.attachStore(recentStore)
+            updatePlaybackRouting()
             openPendingURLIfReady()
+        }
+        .onChange(of: viewModel.hasVideo) { _, _ in
+            updatePlaybackRouting()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -132,7 +136,7 @@ struct PlayerHomeView: View {
         .background(Color(uiColor: .systemBackground))
     }
 
-    private var playerContent: some View {
+    private var regularPlayerContent: some View {
         GeometryReader { geometry in
             List {
                 videoArea(in: geometry)
@@ -155,6 +159,13 @@ struct PlayerHomeView: View {
                 toolbarButtons
             }
         }
+    }
+
+    private func updatePlaybackRouting() {
+        ExternalDisplayManager.shared.update(
+            player: viewModel.player,
+            enabled: viewModel.hasVideo
+        )
     }
 
     private var toolbarButtons: some View {
@@ -265,7 +276,10 @@ struct PlayerHomeView: View {
             if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
                 return
             }
-            viewModel.setError("選択したファイルを開けませんでした。")
+            viewModel.setError(
+                title: "ファイルを開けませんでした",
+                message: "別のファイルを選ぶか、ファイルAppで状態を確認してください。"
+            )
         }
     }
 
@@ -296,7 +310,7 @@ struct PlayerHomeView: View {
         filePreparationID = preparationID
         preparingFileName = url.lastPathComponent
         isPreparingFile = true
-        viewModel.errorMessage = nil
+        viewModel.playbackAlert = nil
 
         filePreparationTask = Task { @MainActor in
             defer {
@@ -319,7 +333,10 @@ struct PlayerHomeView: View {
                 return
             } catch {
                 guard filePreparationID == preparationID else { return }
-                viewModel.setError("動画を準備できませんでした。ファイルAppでダウンロード状況を確認してから、もう一度試してください。")
+                viewModel.setError(
+                    title: "動画を準備できませんでした",
+                    message: "ファイルAppでダウンロード状況を確認してから、もう一度試してください。"
+                )
             }
         }
     }
@@ -377,7 +394,10 @@ struct PlayerHomeView: View {
             }
             isPlayerPresented = true
         } catch {
-            viewModel.setError("選択したファイルを開けませんでした。ファイルAppで端末内にダウンロードしてから、もう一度試してください。")
+            viewModel.setError(
+                title: "ファイルを開けませんでした",
+                message: "ファイルAppで端末内にダウンロードしてから、もう一度試してください。"
+            )
         }
     }
 
@@ -413,7 +433,10 @@ struct PlayerHomeView: View {
             isPlayerPresented = true
         } catch {
             recentStore.remove(video)
-            viewModel.setError("この動画はもう利用できません。履歴から削除しました。もう一度ファイルAppから選択してください。")
+            viewModel.setError(
+                title: "動画を利用できません",
+                message: "履歴から削除しました。もう一度ファイルAppから選択してください。"
+            )
         }
     }
 
@@ -552,6 +575,7 @@ private struct PlayerView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         controller.player = player
         controller.delegate = context.coordinator
+        controller.videoGravity = .resizeAspect
         controller.allowsPictureInPicturePlayback = allowsPictureInPicture
         controller.canStartPictureInPictureAutomaticallyFromInline = allowsPictureInPicture
         controller.showsPlaybackControls = true
@@ -579,5 +603,126 @@ private struct PlayerView: UIViewControllerRepresentable {
                 playerViewController.setNeedsUpdateOfSupportedInterfaceOrientations()
             }
         }
+    }
+}
+
+@MainActor
+private final class ExternalDisplayManager {
+    static let shared = ExternalDisplayManager()
+
+    private var window: UIWindow?
+    private var playerViewController: ExternalPlayerViewController?
+    private weak var player: AVPlayer?
+    private var isEnabled = false
+    private weak var windowScene: UIWindowScene?
+
+    private init() {}
+
+    func update(player: AVPlayer, enabled: Bool) {
+        self.player = player
+        self.isEnabled = enabled
+        configureExternalDisplay()
+    }
+
+    func connect(windowScene: UIWindowScene) {
+        self.windowScene = windowScene
+        configureExternalDisplay()
+    }
+
+    func disconnect(windowScene: UIWindowScene) {
+        guard self.windowScene === windowScene else { return }
+        tearDownExternalDisplay()
+        self.windowScene = nil
+    }
+
+    private func configureExternalDisplay() {
+        guard isEnabled, let player, let windowScene else {
+            tearDownExternalDisplay()
+            return
+        }
+
+        let controller: ExternalPlayerViewController
+        if let existingWindow = window,
+           existingWindow.windowScene === windowScene,
+           let existingController = playerViewController {
+            controller = existingController
+        } else {
+            tearDownExternalDisplay()
+
+            controller = ExternalPlayerViewController()
+            let externalWindow = UIWindow(windowScene: windowScene)
+            externalWindow.rootViewController = controller
+            externalWindow.windowLevel = .normal
+            externalWindow.makeKeyAndVisible()
+
+            window = externalWindow
+            playerViewController = controller
+        }
+
+        controller.player = player
+        controller.videoGravity = .resizeAspectFill
+    }
+
+    private func tearDownExternalDisplay() {
+        playerViewController?.player = nil
+        window?.isHidden = true
+        window = nil
+        playerViewController = nil
+    }
+}
+
+@MainActor
+final class ExternalDisplaySceneDelegate: NSObject, UIWindowSceneDelegate {
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        ExternalDisplayManager.shared.connect(windowScene: windowScene)
+    }
+
+    func sceneDidDisconnect(_ scene: UIScene) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        ExternalDisplayManager.shared.disconnect(windowScene: windowScene)
+    }
+}
+
+private final class ExternalPlayerViewController: UIViewController {
+    var player: AVPlayer? {
+        get { playerView.playerLayer.player }
+        set { playerView.playerLayer.player = newValue }
+    }
+
+    var videoGravity: AVLayerVideoGravity {
+        get { playerView.playerLayer.videoGravity }
+        set { playerView.playerLayer.videoGravity = newValue }
+    }
+
+    private var playerView: ExternalPlayerView {
+        view as! ExternalPlayerView
+    }
+
+    override func loadView() {
+        view = ExternalPlayerView()
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+    }
+
+    override var prefersHomeIndicatorAutoHidden: Bool {
+        true
+    }
+}
+
+private final class ExternalPlayerView: UIView {
+    override static var layerClass: AnyClass {
+        AVPlayerLayer.self
+    }
+
+    var playerLayer: AVPlayerLayer {
+        layer as! AVPlayerLayer
     }
 }
