@@ -1,5 +1,3 @@
-import AVFoundation
-import AVKit
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -7,11 +5,6 @@ import UniformTypeIdentifiers
 private let supportedVideoContentTypes = ["mp4", "mov", "m4v", "3gp", "3g2"]
     .compactMap { UTType(filenameExtension: $0) }
 private let minimumResumeDisplayPosition: TimeInterval = 1
-
-private enum AppLinks {
-    static let support = URL(string: "https://realunivlog.com/")!
-    static let privacyPolicy = URL(string: "https://realunivlog.com/privacy")!
-}
 
 struct PlayerHomeView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
@@ -75,11 +68,11 @@ struct PlayerHomeView: View {
         .onAppear {
             hasAppeared = true
             viewModel.attachStore(recentStore)
-            updatePlaybackRouting()
+            updateExternalDisplayPlayback()
             openPendingURLIfReady()
         }
         .onChange(of: viewModel.hasVideo) { _, _ in
-            updatePlaybackRouting()
+            updateExternalDisplayPlayback()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -161,10 +154,10 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func updatePlaybackRouting() {
-        ExternalDisplayManager.shared.update(
+    private func updateExternalDisplayPlayback() {
+        ExternalDisplayPlaybackCoordinator.shared.update(
             player: viewModel.player,
-            enabled: viewModel.hasVideo
+            isEnabled: viewModel.hasVideo
         )
     }
 
@@ -276,10 +269,7 @@ struct PlayerHomeView: View {
             if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
                 return
             }
-            viewModel.setError(
-                title: "ファイルを開けませんでした",
-                message: "別のファイルを選ぶか、ファイルAppで状態を確認してください。"
-            )
+            viewModel.showAlert(.fileImportFailed)
         }
     }
 
@@ -310,7 +300,7 @@ struct PlayerHomeView: View {
         filePreparationID = preparationID
         preparingFileName = url.lastPathComponent
         isPreparingFile = true
-        viewModel.playbackAlert = nil
+        viewModel.clearAlert()
 
         filePreparationTask = Task { @MainActor in
             defer {
@@ -333,10 +323,7 @@ struct PlayerHomeView: View {
                 return
             } catch {
                 guard filePreparationID == preparationID else { return }
-                viewModel.setError(
-                    title: "動画を準備できませんでした",
-                    message: "ファイルAppでダウンロード状況を確認してから、もう一度試してください。"
-                )
+                viewModel.showAlert(.filePreparationFailed)
             }
         }
     }
@@ -394,10 +381,7 @@ struct PlayerHomeView: View {
             }
             isPlayerPresented = true
         } catch {
-            viewModel.setError(
-                title: "ファイルを開けませんでした",
-                message: "ファイルAppで端末内にダウンロードしてから、もう一度試してください。"
-            )
+            viewModel.showAlert(.fileOpenFailed)
         }
     }
 
@@ -433,10 +417,7 @@ struct PlayerHomeView: View {
             isPlayerPresented = true
         } catch {
             recentStore.remove(video)
-            viewModel.setError(
-                title: "動画を利用できません",
-                message: "履歴から削除しました。もう一度ファイルAppから選択してください。"
-            )
+            viewModel.showAlert(.recentVideoUnavailable)
         }
     }
 
@@ -478,221 +459,5 @@ struct PlayerHomeView: View {
         }
 
         return String(format: "%d:%02d", minutes, seconds)
-    }
-}
-
-private struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var recentStore: RecentVideoStore
-    @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
-    @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
-    @State private var isClearRecentConfirmationPresented = false
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("再生") {
-                    Toggle("ピクチャインピクチャを許可", isOn: $allowsPictureInPicture)
-                }
-
-                Section("表示") {
-                    Picker("テーマ", selection: $appAppearance) {
-                        ForEach(AppAppearance.allCases) { appearance in
-                            Text(appearance.title)
-                                .tag(appearance.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-
-                Section("履歴") {
-                    Button("履歴をすべて削除", role: .destructive) {
-                        isClearRecentConfirmationPresented = true
-                    }
-                    .disabled(recentStore.videos.isEmpty)
-                }
-
-                Section("サポート") {
-                    Link(destination: AppLinks.support) {
-                        Label("サポート", systemImage: "questionmark.circle")
-                    }
-
-                    Link(destination: AppLinks.privacyPolicy) {
-                        Label("プライバシーポリシー", systemImage: "hand.raised")
-                    }
-                }
-
-                Section("アプリ情報") {
-                    LabeledContent("対応形式", value: "MP4, MOV, M4V, 3GP, 3G2")
-                    LabeledContent("バージョン", value: appVersion)
-                }
-            }
-            .navigationTitle("設定")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("完了") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-        .alert("履歴をすべて削除しますか？", isPresented: $isClearRecentConfirmationPresented) {
-            Button("キャンセル", role: .cancel) {}
-            Button("削除", role: .destructive) {
-                recentStore.removeAll()
-            }
-        } message: {
-            Text("最近開いた動画の履歴だけを削除します。元の動画ファイルは削除されません。")
-        }
-    }
-
-    private var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        return version ?? "-"
-    }
-}
-
-private struct PlayerView: UIViewControllerRepresentable {
-    let player: AVPlayer
-    let allowsPictureInPicture: Bool
-
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let controller = AVPlayerViewController()
-        controller.player = player
-        controller.videoGravity = .resizeAspect
-        controller.allowsPictureInPicturePlayback = allowsPictureInPicture
-        controller.canStartPictureInPictureAutomaticallyFromInline = allowsPictureInPicture
-        controller.showsPlaybackControls = true
-        return controller
-    }
-
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
-        controller.player = player
-        controller.videoGravity = .resizeAspect
-        controller.allowsPictureInPicturePlayback = allowsPictureInPicture
-        controller.canStartPictureInPictureAutomaticallyFromInline = allowsPictureInPicture
-        controller.showsPlaybackControls = true
-    }
-}
-
-@MainActor
-private final class ExternalDisplayManager {
-    static let shared = ExternalDisplayManager()
-
-    private var window: UIWindow?
-    private var playerViewController: ExternalPlayerViewController?
-    private weak var player: AVPlayer?
-    private var isEnabled = false
-    private weak var windowScene: UIWindowScene?
-
-    private init() {}
-
-    func update(player: AVPlayer, enabled: Bool) {
-        self.player = player
-        self.isEnabled = enabled
-        configureExternalDisplay()
-    }
-
-    func connect(windowScene: UIWindowScene) {
-        self.windowScene = windowScene
-        configureExternalDisplay()
-    }
-
-    func disconnect(windowScene: UIWindowScene) {
-        guard self.windowScene === windowScene else { return }
-        tearDownExternalDisplay()
-        self.windowScene = nil
-    }
-
-    private func configureExternalDisplay() {
-        guard isEnabled, let player, let windowScene else {
-            tearDownExternalDisplay()
-            return
-        }
-
-        let controller: ExternalPlayerViewController
-        if let existingWindow = window,
-           existingWindow.windowScene === windowScene,
-           let existingController = playerViewController {
-            controller = existingController
-        } else {
-            tearDownExternalDisplay()
-
-            controller = ExternalPlayerViewController()
-            let externalWindow = UIWindow(windowScene: windowScene)
-            externalWindow.rootViewController = controller
-            externalWindow.windowLevel = .normal
-            externalWindow.makeKeyAndVisible()
-
-            window = externalWindow
-            playerViewController = controller
-        }
-
-        controller.player = player
-        controller.videoGravity = .resizeAspect
-    }
-
-    private func tearDownExternalDisplay() {
-        playerViewController?.player = nil
-        window?.isHidden = true
-        window = nil
-        playerViewController = nil
-    }
-}
-
-@MainActor
-final class ExternalDisplaySceneDelegate: NSObject, UIWindowSceneDelegate {
-    func scene(
-        _ scene: UIScene,
-        willConnectTo session: UISceneSession,
-        options connectionOptions: UIScene.ConnectionOptions
-    ) {
-        guard let windowScene = scene as? UIWindowScene else { return }
-        ExternalDisplayManager.shared.connect(windowScene: windowScene)
-    }
-
-    func sceneDidDisconnect(_ scene: UIScene) {
-        guard let windowScene = scene as? UIWindowScene else { return }
-        ExternalDisplayManager.shared.disconnect(windowScene: windowScene)
-    }
-}
-
-private final class ExternalPlayerViewController: UIViewController {
-    var player: AVPlayer? {
-        get { playerView.playerLayer.player }
-        set { playerView.playerLayer.player = newValue }
-    }
-
-    var videoGravity: AVLayerVideoGravity {
-        get { playerView.playerLayer.videoGravity }
-        set { playerView.playerLayer.videoGravity = newValue }
-    }
-
-    private var playerView: ExternalPlayerView {
-        view as! ExternalPlayerView
-    }
-
-    override func loadView() {
-        view = ExternalPlayerView()
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .black
-    }
-
-    override var prefersHomeIndicatorAutoHidden: Bool {
-        true
-    }
-}
-
-private final class ExternalPlayerView: UIView {
-    override static var layerClass: AnyClass {
-        AVPlayerLayer.self
-    }
-
-    var playerLayer: AVPlayerLayer {
-        layer as! AVPlayerLayer
     }
 }

@@ -1,14 +1,8 @@
 import AVFoundation
-import AVKit
+import Combine
+import CoreGraphics
 import Foundation
 import MediaPlayer
-import SwiftUI
-
-struct PlaybackAlert: Identifiable {
-    let id = UUID()
-    let title: String
-    let message: String
-}
 
 @MainActor
 final class PlayerViewModel: ObservableObject {
@@ -105,10 +99,7 @@ final class PlayerViewModel: ObservableObject {
         if url.startAccessingSecurityScopedResource() {
             scopedURL = url
         } else if !FileManager.default.isReadableFile(atPath: url.path) {
-            setError(
-                title: "ファイルにアクセスできません",
-                message: "ファイルAppからもう一度選択してください。"
-            )
+            showAlert(.fileAccessFailed)
             return false
         }
 
@@ -186,8 +177,12 @@ final class PlayerViewModel: ObservableObject {
         scopedURL = nil
     }
 
-    func setError(title: String = "動画を再生できませんでした", message: String) {
-        playbackAlert = PlaybackAlert(title: title, message: message)
+    func clearAlert() {
+        playbackAlert = nil
+    }
+
+    func showAlert(_ alert: PlaybackAlert) {
+        playbackAlert = alert
         finishLoading()
     }
 
@@ -265,26 +260,15 @@ final class PlayerViewModel: ObservableObject {
         videoAspectRatio = nil
         clearNowPlayingInfo()
         setRemoteCommandsEnabled(false)
-        setError(playbackFailureAlert())
+        showAlert(playbackFailureAlert)
     }
 
-    private func setError(_ alert: PlaybackAlert) {
-        playbackAlert = alert
-        finishLoading()
-    }
-
-    private func playbackFailureAlert() -> PlaybackAlert {
+    private var playbackFailureAlert: PlaybackAlert {
         if player.isExternalPlaybackActive || didUseExternalPlayback {
-            return PlaybackAlert(
-                title: "AirPlayで再生できませんでした",
-                message: "接続先の機器では、この動画をAirPlayで直接再生できない可能性があります。iPhoneのコントロールセンターから「画面ミラーリング」を選んで再生してください。"
-            )
+            return .airPlayPlaybackFailed
         }
 
-        return PlaybackAlert(
-            title: "動画を再生できませんでした",
-            message: "ファイルが壊れているか、iPhoneで再生できない形式の可能性があります。"
-        )
+        return .localPlaybackFailed
     }
 
     private func configureRemoteCommands() {

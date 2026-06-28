@@ -82,9 +82,9 @@ final class RecentVideoStoreTests: XCTestCase {
     func testKeepsMostRecentItemsWithinLimit() throws {
         let store = RecentVideoStore(userDefaults: userDefaults, maxItems: 2)
 
-        _ = try store.addOrUpdate(url: makeVideoFile(named: "first.mp4"))
-        _ = try store.addOrUpdate(url: makeVideoFile(named: "second.mp4"))
-        _ = try store.addOrUpdate(url: makeVideoFile(named: "third.mp4"))
+        _ = try store.addOrUpdate(url: makeVideoFile(named: "first.mp4", contents: "first video content"))
+        _ = try store.addOrUpdate(url: makeVideoFile(named: "second.mp4", contents: "second video content"))
+        _ = try store.addOrUpdate(url: makeVideoFile(named: "third.mp4", contents: "third video content"))
 
         XCTAssertEqual(store.videos.map(\.title), ["third.mp4", "second.mp4"])
     }

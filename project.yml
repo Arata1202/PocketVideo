@@ -8,6 +8,7 @@ settings:
   base:
     MARKETING_VERSION: 1.0.0
     CURRENT_PROJECT_VERSION: 1
+    DEVELOPMENT_TEAM: 6DQ3D32B73
 targets:
   PocketVideo:
     type: application
@@ -65,4 +66,5 @@ targets:
       - target: PocketVideo
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.arata1202.PocketVideoTests
