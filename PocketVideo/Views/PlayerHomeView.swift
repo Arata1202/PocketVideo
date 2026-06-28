@@ -557,14 +557,9 @@ private struct PlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
     let allowsPictureInPicture: Bool
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = player
-        controller.delegate = context.coordinator
         controller.videoGravity = .resizeAspect
         controller.allowsPictureInPicturePlayback = allowsPictureInPicture
         controller.canStartPictureInPictureAutomaticallyFromInline = allowsPictureInPicture
@@ -574,35 +569,10 @@ private struct PlayerView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
         controller.player = player
-        controller.delegate = context.coordinator
         controller.videoGravity = .resizeAspect
         controller.allowsPictureInPicturePlayback = allowsPictureInPicture
         controller.canStartPictureInPictureAutomaticallyFromInline = allowsPictureInPicture
         controller.showsPlaybackControls = true
-    }
-
-    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
-        func playerViewController(
-            _ playerViewController: AVPlayerViewController,
-            willBeginFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
-        ) {
-            guard UIDevice.current.userInterfaceIdiom != .pad else { return }
-
-            AppOrientationLock.supportedOrientations = .allButUpsideDown
-            playerViewController.setNeedsUpdateOfSupportedInterfaceOrientations()
-        }
-
-        func playerViewController(
-            _ playerViewController: AVPlayerViewController,
-            willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
-        ) {
-            guard UIDevice.current.userInterfaceIdiom != .pad else { return }
-
-            coordinator.animate(alongsideTransition: nil) { _ in
-                AppOrientationLock.supportedOrientations = .portrait
-                playerViewController.setNeedsUpdateOfSupportedInterfaceOrientations()
-            }
-        }
     }
 }
 

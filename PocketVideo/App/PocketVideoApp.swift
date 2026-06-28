@@ -31,10 +31,6 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     }
 }
 
-enum AppOrientationLock {
-    static var supportedOrientations: UIInterfaceOrientationMask = .portrait
-}
-
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
@@ -44,7 +40,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             return .all
         }
 
-        return AppOrientationLock.supportedOrientations
+        return .allButUpsideDown
     }
 
     func application(
