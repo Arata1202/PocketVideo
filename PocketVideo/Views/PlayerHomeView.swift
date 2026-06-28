@@ -630,7 +630,7 @@ private final class ExternalDisplayManager {
         }
 
         controller.player = player
-        controller.videoGravity = .resizeAspectFill
+        controller.videoGravity = .resizeAspect
     }
 
     private func tearDownExternalDisplay() {
