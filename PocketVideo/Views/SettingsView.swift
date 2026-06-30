@@ -17,9 +17,9 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("再生") {
-                    Toggle("ピクチャインピクチャを許可", isOn: $allowsPictureInPicture)
-                    Toggle("ミラーリング時に動画だけ表示", isOn: $allowsExternalDisplayPlayback)
-                    Text("画面ミラーリング時に、接続先の画面へ動画を表示します。")
+                    Toggle("ピクチャ・イン・ピクチャを許可", isOn: $allowsPictureInPicture)
+                    Toggle("外部画面に動画だけ表示", isOn: $allowsExternalDisplayPlayback)
+                    Text("外部ディスプレイ接続時に、接続先には動画だけを表示します。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -52,8 +52,8 @@ struct SettingsView: View {
                 }
 
                 Section("アプリ情報") {
-                    LabeledContent("対応形式", value: "この端末で再生可能な動画")
-                    Text("MP4, MOV, M4V, 3GP, 3G2でも、コーデックによっては再生できない場合があります。")
+                    LabeledContent("対応形式", value: "MP4, MOV, M4V, 3GP, 3G2")
+                    Text("同じ拡張子でも、コーデックによってはこの端末で再生できない場合があります。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     LabeledContent("バージョン", value: appVersion)

@@ -98,7 +98,7 @@ struct PlayerHomeView: View {
                 Text("動画を準備中…")
                     .font(.headline)
 
-                Text("iCloudから取得しています")
+                Text("iCloudからダウンロードしています")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
