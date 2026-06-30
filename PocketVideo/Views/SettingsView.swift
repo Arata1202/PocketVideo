@@ -10,6 +10,7 @@ struct SettingsView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
     @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
+    @AppStorage("allowsExternalDisplayPlayback") private var allowsExternalDisplayPlayback = true
     @State private var isClearRecentConfirmationPresented = false
 
     var body: some View {
@@ -17,6 +18,7 @@ struct SettingsView: View {
             Form {
                 Section("再生") {
                     Toggle("ピクチャインピクチャを許可", isOn: $allowsPictureInPicture)
+                    Toggle("外部画面で動画を表示", isOn: $allowsExternalDisplayPlayback)
                 }
 
                 Section("表示") {
