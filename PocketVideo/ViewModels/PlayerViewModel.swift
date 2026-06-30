@@ -37,6 +37,7 @@ final class PlayerViewModel: ObservableObject {
     private var didFinishPlayback = false
     private var didUseExternalPlayback = false
     private var openRequestID = UUID()
+    private var canSaveCurrentPosition = false
 
     init() {
         player.allowsExternalPlayback = true
@@ -98,6 +99,7 @@ final class PlayerViewModel: ObservableObject {
         lastPositionSaveAt = .distantPast
         didFinishPlayback = false
         didUseExternalPlayback = false
+        canSaveCurrentPosition = false
 
         if url.startAccessingSecurityScopedResource() {
             scopedURL = url
@@ -112,6 +114,7 @@ final class PlayerViewModel: ObservableObject {
         lastPositionSaveAt = .distantPast
         didFinishPlayback = false
         didUseExternalPlayback = false
+        canSaveCurrentPosition = false
 
         let asset = AVURLAsset(url: url)
         aspectRatioLoadTask = Task { [weak self] in
@@ -152,6 +155,7 @@ final class PlayerViewModel: ObservableObject {
         lastPositionSaveAt = .distantPast
         didFinishPlayback = false
         didUseExternalPlayback = false
+        canSaveCurrentPosition = false
         clearNowPlayingInfo()
         setRemoteCommandsEnabled(false)
         stopSecurityScopedAccess()
@@ -159,6 +163,7 @@ final class PlayerViewModel: ObservableObject {
 
     func saveCurrentPosition() {
         guard let id = currentRecentVideoID else { return }
+        guard canSaveCurrentPosition else { return }
         let seconds = player.currentTime().seconds
 
         if didFinishPlayback, seconds.isFinite, !isAtPlaybackEnd(seconds) {
@@ -223,7 +228,7 @@ final class PlayerViewModel: ObservableObject {
                 case .readyToPlay:
                     guard !didStartPlayback else { return }
                     didStartPlayback = true
-                    self.startPlayback(resumePosition: resumePosition)
+                    self.startPlayback(item: item, resumePosition: resumePosition)
                 case .failed:
                     self.handlePlayerItemFailure()
                 default:
@@ -233,7 +238,9 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func startPlayback(resumePosition: TimeInterval) {
+    private func startPlayback(item: AVPlayerItem, resumePosition: TimeInterval) {
+        guard player.currentItem === item else { return }
+
         hasVideo = true
         didFinishPlayback = false
         setRemoteCommandsEnabled(true)
@@ -244,12 +251,16 @@ final class PlayerViewModel: ObservableObject {
             let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
             player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
                 Task { @MainActor in
-                    guard let self else { return }
+                    guard let self, self.hasVideo, self.player.currentItem === item else { return }
+                    self.canSaveCurrentPosition = true
+                    let seconds = self.player.currentTime().seconds
+                    self.currentPlaybackPosition = seconds.isFinite ? seconds : resumePosition
                     self.player.play()
                     self.updateNowPlayingInfo()
                 }
             }
         } else {
+            canSaveCurrentPosition = true
             player.play()
             updateNowPlayingInfo()
         }
@@ -262,6 +273,7 @@ final class PlayerViewModel: ObservableObject {
         hasVideo = false
         currentPlaybackPosition = 0
         videoAspectRatio = nil
+        canSaveCurrentPosition = false
         clearNowPlayingInfo()
         setRemoteCommandsEnabled(false)
         showAlert(playbackFailureAlert)
@@ -452,6 +464,7 @@ final class PlayerViewModel: ObservableObject {
 
     private func updateCurrentPlaybackPosition() {
         guard !didFinishPlayback else { return }
+        guard canSaveCurrentPosition else { return }
         let seconds = player.currentTime().seconds
         guard seconds.isFinite else { return }
         currentPlaybackPosition = seconds
