@@ -36,6 +36,7 @@ final class PlayerViewModel: ObservableObject {
     private let positionSaveInterval: TimeInterval = 1
     private var didFinishPlayback = false
     private var didUseExternalPlayback = false
+    private var openRequestID = UUID()
 
     init() {
         player.allowsExternalPlayback = true
@@ -74,6 +75,8 @@ final class PlayerViewModel: ObservableObject {
 
     @discardableResult
     func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) -> Bool {
+        let requestID = UUID()
+        openRequestID = requestID
         saveCurrentPosition()
         isLoading = true
         playbackAlert = nil
@@ -116,7 +119,7 @@ final class PlayerViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
 
             await MainActor.run {
-                guard let self else { return }
+                guard let self, self.openRequestID == requestID else { return }
 
                 let item = AVPlayerItem(asset: asset)
                 item.externalMetadata = Self.metadataItems(title: self.currentVideoTitle ?? url.lastPathComponent)
@@ -130,6 +133,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func closeCurrentVideo() {
+        openRequestID = UUID()
         saveCurrentPosition()
         aspectRatioLoadTask?.cancel()
         loadingIndicatorTask?.cancel()
