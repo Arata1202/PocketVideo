@@ -428,8 +428,11 @@ struct PlayerHomeView: View {
     }
 
     private func playbackText(for video: RecentVideo, showsNowPlaying: Bool) -> String? {
-        if showsNowPlaying, viewModel.hasVideo, video.id == viewModel.currentRecentVideoID {
-            return "再生中 \(formatDuration(viewModel.currentPlaybackPosition))"
+        if showsNowPlaying,
+           video.id == viewModel.currentRecentVideoID,
+           viewModel.hasVideo || viewModel.isLoading {
+            let position = max(viewModel.currentPlaybackPosition, video.lastPosition)
+            return "再生中 \(formatDuration(position))"
         }
 
         return resumeText(for: video.lastPosition)
