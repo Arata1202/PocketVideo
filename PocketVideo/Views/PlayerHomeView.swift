@@ -414,11 +414,7 @@ struct PlayerHomeView: View {
     private func openRecent(_ video: RecentVideo) {
         do {
             let url = try recentStore.resolveURL(for: video)
-            guard viewModel.open(url: url, resumePosition: video.lastPosition, recentVideoID: video.id, displayTitle: video.title) else {
-                recentStore.remove(video)
-                return
-            }
-            isPlayerPresented = true
+            prepareAndOpenURL(url)
         } catch {
             recentStore.remove(video)
             viewModel.showAlert(.recentVideoUnavailable)

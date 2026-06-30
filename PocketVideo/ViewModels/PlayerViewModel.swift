@@ -24,6 +24,8 @@ final class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var playbackEndObserver: NSObjectProtocol?
     private var playbackFailureObserver: NSObjectProtocol?
+    private var audioSessionInterruptionObserver: NSObjectProtocol?
+    private var audioSessionRouteChangeObserver: NSObjectProtocol?
     private var playerItemStatusObservation: NSKeyValueObservation?
     private var playerTimeControlStatusObservation: NSKeyValueObservation?
     private var externalPlaybackObservation: NSKeyValueObservation?
@@ -38,6 +40,7 @@ final class PlayerViewModel: ObservableObject {
     private var didUseExternalPlayback = false
     private var openRequestID = UUID()
     private var canSaveCurrentPosition = false
+    private var shouldResumeAfterAudioSessionInterruption = false
 
     init() {
         player.allowsExternalPlayback = true
@@ -46,6 +49,7 @@ final class PlayerViewModel: ObservableObject {
         configureAudioSession()
         configureRemoteCommands()
         observePlayerPlaybackState()
+        observeAudioSession()
         addPlaybackObservers()
     }
 
@@ -66,6 +70,12 @@ final class PlayerViewModel: ObservableObject {
             }
             if let playbackFailureObserver {
                 NotificationCenter.default.removeObserver(playbackFailureObserver)
+            }
+            if let audioSessionInterruptionObserver {
+                NotificationCenter.default.removeObserver(audioSessionInterruptionObserver)
+            }
+            if let audioSessionRouteChangeObserver {
+                NotificationCenter.default.removeObserver(audioSessionRouteChangeObserver)
             }
         }
     }
@@ -500,6 +510,71 @@ final class PlayerViewModel: ObservableObject {
         } catch {
             // Playback can still be attempted even if the session is not ready at launch.
             // File-open errors are the only failures surfaced through the video alert.
+        }
+    }
+
+    private func observeAudioSession() {
+        audioSessionInterruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleAudioSessionInterruption(notification)
+            }
+        }
+
+        audioSessionRouteChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                self?.handleAudioSessionRouteChange(notification)
+            }
+        }
+    }
+
+    private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+        switch type {
+        case .began:
+            shouldResumeAfterAudioSessionInterruption = hasVideo && player.timeControlStatus == .playing
+            player.pause()
+            saveCurrentPosition()
+            updateNowPlayingInfo(playbackRate: 0)
+        case .ended:
+            configureAudioSession()
+            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            if shouldResumeAfterAudioSessionInterruption, hasVideo, options.contains(.shouldResume) {
+                didFinishPlayback = false
+                player.play()
+            }
+            shouldResumeAfterAudioSessionInterruption = false
+            updateNowPlayingInfo()
+        @unknown default:
+            break
+        }
+    }
+
+    private func handleAudioSessionRouteChange(_ notification: Notification) {
+        guard hasVideo,
+              let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+
+        switch reason {
+        case .oldDeviceUnavailable:
+            player.pause()
+            saveCurrentPosition()
+            updateNowPlayingInfo(playbackRate: 0)
+        case .categoryChange, .override, .routeConfigurationChange:
+            saveCurrentPosition()
+            updateNowPlayingInfo()
+        default:
+            break
         }
     }
 

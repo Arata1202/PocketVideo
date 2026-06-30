@@ -18,7 +18,10 @@ struct SettingsView: View {
             Form {
                 Section("再生") {
                     Toggle("ピクチャインピクチャを許可", isOn: $allowsPictureInPicture)
-                    Toggle("外部画面で動画を表示", isOn: $allowsExternalDisplayPlayback)
+                    Toggle("ミラーリング時に動画だけ表示", isOn: $allowsExternalDisplayPlayback)
+                    Text("画面ミラーリング時に、接続先の画面へ動画を表示します。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("表示") {
@@ -49,7 +52,10 @@ struct SettingsView: View {
                 }
 
                 Section("アプリ情報") {
-                    LabeledContent("対応形式", value: "MP4, MOV, M4V, 3GP, 3G2")
+                    LabeledContent("対応形式", value: "この端末で再生可能な動画")
+                    Text("MP4, MOV, M4V, 3GP, 3G2でも、コーデックによっては再生できない場合があります。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     LabeledContent("バージョン", value: appVersion)
                 }
             }
