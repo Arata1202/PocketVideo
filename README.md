@@ -1,44 +1,182 @@
-# Pocket Video
+<div id="top"></div>
 
-Pocket Video is a simple iOS app for local video playback with AirPlay support.
+<div align="right">
 
-It focuses on opening local MP4, MOV, M4V, 3GP, and 3G2 files from Files without copying them into app storage, playing them on iPhone or iPad, and sending playback to AirPlay devices such as Apple TV.
+![GitHub License](https://img.shields.io/github/license/Arata1202/PocketVideo)
 
-## Features
+</div>
 
-- Open local MP4, MOV, M4V, 3GP, and 3G2 files from Files.
-- Play selected videos directly without copying them into app storage.
-- Play videos on iPhone and iPad.
-- Send playback to AirPlay devices.
-- Use the native Apple video player controls.
-- Resume recently opened videos.
-- Manage recently opened videos.
-- Preserve the original aspect ratio for horizontal, vertical, and 4:3 videos.
+![title](/.docs/readme/images/title.png)
 
-## Requirements
+## 目次
 
-- iOS 17.0 or later
-- Xcode
-- XcodeGen
+- [Pocket Video：iOS](#top)
+  - [目次](#目次)
+  - [リンク一覧](#リンク一覧)
+  - [使用技術](#使用技術)
+  - [アーキテクチャ](#アーキテクチャ)
+  - [環境構築](#環境構築)
+  - [テスト](#テスト)
+  - [ディレクトリ構成](#ディレクトリ構成)
+  - [Gitの運用](#Gitの運用)
+    - [ブランチ](#ブランチ)
+    - [コミットメッセージの記法](#コミットメッセージの記法)
 
-## Development
+## リンク一覧
 
-Generate the Xcode project:
+<ul>
+  <li><a href="https://www.figma.com/design/l0hfS00kcTqVAzCtJFLiGZ/%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%BC%E3%83%B3%E3%82%B7%E3%83%A7%E3%83%83%E3%83%88?node-id=0-1&t=fKSbhXqkAAxZaDOY-1">Figma</a></li>
+</ul>
 
-```bash
+<p align="right">(<a href="#top">トップへ</a>)</p>
+
+## 使用技術
+
+| Category     | Technology Stack                   |
+| ------------ | ---------------------------------- |
+| App          | SwiftUI, Swift                     |
+| Platform     | iOS                                |
+| Integrations | Files, AirPlay, Picture in Picture |
+| Design       | Figma                              |
+| Development  | Xcode                              |
+
+<p align="right">(<a href="#top">トップへ</a>)</p>
+
+## アーキテクチャ
+
+```mermaid
+flowchart TB
+  subgraph local[Local Configuration]
+    projectYml[project.yml] --> xcodegen[XcodeGen]
+    xcodegen --> xcodeproj[PocketVideo.xcodeproj]
+  end
+
+  subgraph runtime[App Runtime]
+    xcodeproj --> app[App Entry]
+    app --> shell[Player Shell<br/>Open / Recent / Settings]
+    shell --> files[Files<br/>Video Selection]
+    shell --> playback[Playback Resolver]
+    shell --> nativeFeatures[PiP / Now Playing / Remote Commands]
+    files --> playback
+    playback --> player[Native Video Player]
+    player --> external[External Playback]
+  end
+
+  player --> localFiles[Local Video Files]
+  external --> airplay[AirPlay / External Display]
+```
+
+<p align="right">(<a href="#top">トップへ</a>)</p>
+
+## 環境構築
+
+```
+# リポジトリのクローン
+git clone git@github.com:Arata1202/PocketVideo.git
+cd PocketVideo
+
+# XcodeGenのインストール
 brew install xcodegen
+
+# Xcodeプロジェクトの生成
 xcodegen generate
+
+# Xcodeから起動
 open PocketVideo.xcodeproj
 ```
 
-Then select a development team in Xcode and build the app on Simulator or a real device.
+```
+# iOSリリースビルド
+xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -configuration Release -destination 'generic/platform=iOS' build
+```
 
-AirPlay behavior should be tested on a real iPhone or iPad with an AirPlay receiver.
+<p align="right">(<a href="#top">トップへ</a>)</p>
 
-## Scope
+## テスト
 
-This project focuses on local video playback and AirPlay routing. Advanced media library features are intentionally kept out of the core experience.
+```
+# ユニットテスト
+xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -destination 'platform=iOS Simulator,name=iPhone 16' test
+```
 
-## License
+<p align="right">(<a href="#top">トップへ</a>)</p>
 
-MIT
+## ディレクトリ構成
+
+```
+❯ tree -a -I ".git|.DS_Store|xcuserdata|DerivedData|build|*.xcuserstate" -L 3
+.
+├── .docs
+│   └── readme
+│       └── images
+├── .gitignore
+├── Brand
+│   ├── PocketVideoAppIcon-1024.png
+│   └── PocketVideoAppIcon-source.png
+├── LICENSE
+├── PocketVideo
+│   ├── App
+│   │   ├── ExternalDisplayPlayback.swift
+│   │   └── PocketVideoApp.swift
+│   ├── Assets.xcassets
+│   │   ├── AppIcon.appiconset
+│   │   └── Contents.json
+│   ├── Info.plist
+│   ├── Models
+│   │   ├── PlaybackAlert.swift
+│   │   ├── RecentVideo.swift
+│   │   └── RecentVideoStore.swift
+│   ├── PrivacyInfo.xcprivacy
+│   ├── ViewModels
+│   │   └── PlayerViewModel.swift
+│   ├── Views
+│   │   ├── PlayerHomeView.swift
+│   │   ├── PlayerView.swift
+│   │   └── SettingsView.swift
+│   └── ja.lproj
+│       └── Localizable.strings
+├── PocketVideo.xcodeproj
+│   ├── project.pbxproj
+│   ├── project.xcworkspace
+│   │   ├── contents.xcworkspacedata
+│   │   └── xcshareddata
+│   └── xcshareddata
+├── PocketVideoTests
+│   └── RecentVideoStoreTests.swift
+├── README.md
+└── project.yml
+
+18 directories, 22 files
+```
+
+<p align="right">(<a href="#top">トップへ</a>)</p>
+
+## Gitの運用
+
+### ブランチ
+
+GitHub Flowを使用する。
+mainとfeatureブランチで運用する。
+
+| ブランチ名 |   役割   | 派生元 | マージ先 |
+| :--------: | :------: | :----: | :------: |
+|    main    | 本番環境 |   -    |    -     |
+| feature/\* | 機能開発 |  main  |   main   |
+
+### コミットメッセージの記法
+
+```
+fix: バグ修正
+feat: 新機能追加
+perf: パフォーマンス改善
+refactor: コードのリファクタリング
+docs: ドキュメントのみの変更
+style: コードのフォーマットに関する変更
+test: テストコードの変更
+build: ビルドシステムや依存関係の変更
+ci: CI/CD設定の変更
+revert: 変更の取り消し
+chore: その他の変更
+```
+
+<p align="right">(<a href="#top">トップへ</a>)</p>
