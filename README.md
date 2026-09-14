@@ -13,8 +13,9 @@
 
 ## 開発環境
 
-macOS、Xcode、[Homebrew](https://brew.sh/)が必要です。アプリの対応OSはiOS 17以降です。
+macOSとXcode 26以降が必要です。アプリの対応OSはiOS 17以降です。
 Xcodeプロジェクトは `project.yml` からXcodeGenで生成します。
+以下の手順では[Homebrew](https://brew.sh/)を使います。
 
 ```bash
 git clone https://github.com/Arata1202/PocketVideo.git
@@ -36,7 +37,7 @@ xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -destination 'plat
 
 `iPhone 16` は、最初のコマンドで表示された利用可能なシミュレーター名に置き換えてください。
 CIではシミュレーター向けビルドとユニットテストを実行します。
-AirPlayや外部ディスプレイの動作は、対応する実機で確認してください。
+AirPlayや外部ディスプレイに関わる変更は、対応する実機で動作を確認してください。
 
 ## 使用技術
 
