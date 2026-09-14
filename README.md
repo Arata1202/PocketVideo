@@ -5,7 +5,6 @@
 # Pocket Video
 
 ファイルに保存した動画を再生できる、無料のiOS動画プレイヤーです。
-AirPlay、ピクチャ・イン・ピクチャ、続きからの再生に対応しています。
 
 [App Storeでダウンロード](https://apps.apple.com/jp/app/pocket-video/id6783846586)
 
@@ -31,7 +30,6 @@ open PocketVideo.xcodeproj
 
 Xcodeで `PocketVideo` スキームとiOSシミュレーターを選んで実行してください。
 実機で実行する場合は、Signing & Capabilitiesで自分の開発チームを設定してください。
-個人の署名設定はコミットしないでください。
 
 ## テスト
 
