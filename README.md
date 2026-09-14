@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="Brand/PocketVideoAppIcon-1024.png" width="96" alt="Pocket Videoのアイコン">
-</p>
-
 # Pocket Video
 
 ファイルに保存した動画を再生できる、無料のiOS動画プレイヤーです。
