@@ -1,34 +1,48 @@
-<div id="top"></div>
+<p align="center">
+  <img src="Brand/PocketVideoAppIcon-1024.png" width="96" alt="Pocket Videoのアイコン">
+</p>
 
-<div align="right">
+# Pocket Video
 
-![GitHub License](https://img.shields.io/github/license/Arata1202/PocketVideo)
+ファイルに保存した動画を再生できる、無料のiOS動画プレイヤーです。
+AirPlay、ピクチャ・イン・ピクチャ、続きからの再生に対応しています。
 
-</div>
+[App Storeでダウンロード](https://apps.apple.com/jp/app/pocket-video/id6783846586)
 
-![title](/.docs/readme/images/title.png)
+## 主な機能
 
-## 目次
+- ファイルアプリや共有メニューから動画を開く
+- 最近開いた動画を、前回の再生位置から再開
+- AirPlay・外部ディスプレイでの再生
+- ピクチャ・イン・ピクチャでの再生
 
-- [Pocket Video](#top)
-  - [目次](#目次)
-  - [リンク一覧](#リンク一覧)
-  - [使用技術](#使用技術)
-  - [アーキテクチャ](#アーキテクチャ)
-  - [環境構築](#環境構築)
-  - [テスト](#テスト)
-  - [ディレクトリ構成](#ディレクトリ構成)
-  - [Gitの運用](#Gitの運用)
-    - [ブランチ](#ブランチ)
-    - [コミットメッセージの記法](#コミットメッセージの記法)
+## 開発環境
 
-## リンク一覧
+macOS、Xcode、[Homebrew](https://brew.sh/)が必要です。アプリの対応OSはiOS 17以降です。
+Xcodeプロジェクトは `project.yml` からXcodeGenで生成します。
 
-<ul>
-  <li><a href="https://www.figma.com/design/l0hfS00kcTqVAzCtJFLiGZ/%E3%82%B9%E3%82%AF%E3%83%AA%E3%83%BC%E3%83%B3%E3%82%B7%E3%83%A7%E3%83%83%E3%83%88?node-id=0-1&t=fKSbhXqkAAxZaDOY-1">Figma</a></li>
-</ul>
+```bash
+git clone https://github.com/Arata1202/PocketVideo.git
+cd PocketVideo
+brew install xcodegen
+xcodegen generate
+open PocketVideo.xcodeproj
+```
 
-<p align="right">(<a href="#top">トップへ</a>)</p>
+Xcodeで `PocketVideo` スキームとiOSシミュレーターを選んで実行してください。
+実機で実行する場合は、Signing & Capabilitiesで自分の開発チームを設定してください。
+個人の署名設定はコミットしないでください。
+
+## テスト
+
+```bash
+xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -showdestinations
+xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -destination 'platform=iOS Simulator,name=iPhone 16' test
+```
+
+`iPhone 16` は、最初のコマンドで表示された利用可能なシミュレーター名に置き換えてください。
+CIではシミュレーター向けビルドとユニットテストを実行します。
+AirPlayや外部ディスプレイの動作は、対応する実機で確認してください。
 
 ## 使用技術
 
@@ -39,8 +53,6 @@
 | Integrations | Files, AirPlay, Picture in Picture |
 | Design       | Figma                              |
 | Development  | Xcode                              |
-
-<p align="right">(<a href="#top">トップへ</a>)</p>
 
 ## アーキテクチャ
 
@@ -66,117 +78,22 @@ flowchart TB
   external --> airplay[AirPlay / External Display]
 ```
 
-<p align="right">(<a href="#top">トップへ</a>)</p>
-
-## 環境構築
-
-```
-# リポジトリのクローン
-git clone git@github.com:Arata1202/PocketVideo.git
-cd PocketVideo
-
-# XcodeGenのインストール
-brew install xcodegen
-
-# Xcodeプロジェクトの生成
-xcodegen generate
-
-# Xcodeから起動
-open PocketVideo.xcodeproj
-```
-
-```
-# iOSリリースビルド
-xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -configuration Release -destination 'generic/platform=iOS' build
-```
-
-<p align="right">(<a href="#top">トップへ</a>)</p>
-
-## テスト
-
-```
-# ユニットテスト
-xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -destination 'platform=iOS Simulator,name=iPhone 16' test
-```
-
-<p align="right">(<a href="#top">トップへ</a>)</p>
-
 ## ディレクトリ構成
 
-```
-❯ tree -a -I ".git|.DS_Store|xcuserdata|DerivedData|build|*.xcuserstate" -L 3
-.
-├── .docs
-│   └── readme
-│       └── images
-├── .gitignore
-├── Brand
-│   ├── PocketVideoAppIcon-1024.png
-│   └── PocketVideoAppIcon-source.png
-├── LICENSE
-├── PocketVideo
-│   ├── App
-│   │   ├── ExternalDisplayPlayback.swift
-│   │   └── PocketVideoApp.swift
-│   ├── Assets.xcassets
-│   │   ├── AppIcon.appiconset
-│   │   └── Contents.json
-│   ├── Info.plist
-│   ├── Models
-│   │   ├── PlaybackAlert.swift
-│   │   ├── RecentVideo.swift
-│   │   └── RecentVideoStore.swift
-│   ├── PrivacyInfo.xcprivacy
-│   ├── ViewModels
-│   │   └── PlayerViewModel.swift
-│   ├── Views
-│   │   ├── PlayerHomeView.swift
-│   │   ├── PlayerView.swift
-│   │   └── SettingsView.swift
-│   └── ja.lproj
-│       └── Localizable.strings
-├── PocketVideo.xcodeproj
-│   ├── project.pbxproj
-│   ├── project.xcworkspace
-│   │   ├── contents.xcworkspacedata
-│   │   └── xcshareddata
-│   └── xcshareddata
-├── PocketVideoTests
-│   └── RecentVideoStoreTests.swift
-├── README.md
-└── project.yml
-
-18 directories, 22 files
+```text
+PocketVideo/       アプリ本体
+PocketVideoTests/  ユニットテスト
+Brand/             アプリアイコン
+project.yml        XcodeGenのプロジェクト定義
 ```
 
-<p align="right">(<a href="#top">トップへ</a>)</p>
+デザイン資料は[Figma](https://www.figma.com/design/l0hfS00kcTqVAzCtJFLiGZ/)にあります。
 
-## Gitの運用
+## コントリビューション
 
-### ブランチ
+不具合報告、改善提案、ドキュメント修正、プルリクエストを歓迎します。
+参加方法は[コントリビューションガイド](CONTRIBUTING.md)をご覧ください。
 
-GitHub Flowを使用する。
-mainとfeatureブランチで運用する。
+## ライセンス
 
-| ブランチ名 |   役割   | 派生元 | マージ先 |
-| :--------: | :------: | :----: | :------: |
-|    main    | 本番環境 |   -    |    -     |
-| feature/\* | 機能開発 |  main  |   main   |
-
-### コミットメッセージの記法
-
-```
-fix: バグ修正
-feat: 新機能追加
-perf: パフォーマンス改善
-refactor: コードのリファクタリング
-docs: ドキュメントのみの変更
-style: コードのフォーマットに関する変更
-test: テストコードの変更
-build: ビルドシステムや依存関係の変更
-ci: CI/CD設定の変更
-revert: 変更の取り消し
-chore: その他の変更
-```
-
-<p align="right">(<a href="#top">トップへ</a>)</p>
+[MIT License](LICENSE)
