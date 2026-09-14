@@ -51,27 +51,9 @@ AirPlayや外部ディスプレイに関わる変更は、対応する実機で�
 
 ## アーキテクチャ
 
-```mermaid
-flowchart TB
-  subgraph local[Local Configuration]
-    projectYml[project.yml] --> xcodegen[XcodeGen]
-    xcodegen --> xcodeproj[PocketVideo.xcodeproj]
-  end
+![アーキテクチャ](docs/architecture.png)
 
-  subgraph runtime[App Runtime]
-    xcodeproj --> app[App Entry]
-    app --> shell[Player Shell<br/>Open / Recent / Settings]
-    shell --> files[Files<br/>Video Selection]
-    shell --> playback[Playback Resolver]
-    shell --> nativeFeatures[PiP / Now Playing / Remote Commands]
-    files --> playback
-    playback --> player[Native Video Player]
-    player --> external[External Playback]
-  end
-
-  player --> localFiles[Local Video Files]
-  external --> airplay[AirPlay / External Display]
-```
+[Excalidrawで編集するためのファイル](docs/architecture.excalidraw)
 
 ## ディレクトリ構成
 
