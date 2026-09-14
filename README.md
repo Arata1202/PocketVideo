@@ -49,12 +49,6 @@ AirPlayや外部ディスプレイに関わる変更は、対応する実機で�
 | Design       | Figma                              |
 | Development  | Xcode                              |
 
-## アーキテクチャ
-
-![アーキテクチャ](docs/architecture.png)
-
-[Excalidrawで編集するためのファイル](docs/architecture.excalidraw)
-
 ## ディレクトリ構成
 
 ```text
