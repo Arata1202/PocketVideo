@@ -41,13 +41,14 @@ AirPlayや外部ディスプレイに関わる変更は、対応する実機で�
 
 ## 使用技術
 
-| Category     | Technology Stack                   |
-| ------------ | ---------------------------------- |
-| App          | SwiftUI, Swift                     |
-| Platform     | iOS                                |
-| Integrations | Files, AirPlay, Picture in Picture |
-| Design       | Figma                              |
-| Development  | Xcode                              |
+| Category    | Technology Stack                  |
+| ----------- | --------------------------------- |
+| App         | Swift, SwiftUI                    |
+| Media       | AVFoundation, AVKit, MediaPlayer   |
+| Development | Xcode, XcodeGen                    |
+| Testing     | XCTest                            |
+| CI          | GitHub Actions                    |
+| Design      | Figma                             |
 
 ## ディレクトリ構成
 
