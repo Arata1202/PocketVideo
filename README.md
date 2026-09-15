@@ -1,3 +1,10 @@
+<div align="right">
+
+[![CI](https://img.shields.io/github/actions/workflow/status/Arata1202/PocketVideo/ci.yml?branch=main)](https://github.com/Arata1202/PocketVideo/actions/workflows/ci.yml)
+[![MIT License](https://img.shields.io/github/license/Arata1202/PocketVideo)](LICENSE)
+
+</div>
+
 # Pocket Video
 
 ファイルに保存した動画を再生できる、無料のiOS動画プレイヤーです。
