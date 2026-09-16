@@ -1,7 +1,8 @@
 import SwiftUI
 
 private enum AppLinks {
-    static let support = URL(string: "https://realunivlog.com/")!
+    static let contact = URL(string: "https://realunivlog.com/contact")!
+    static let github = URL(string: "https://github.com/Arata1202/PocketVideo")!
     static let privacyPolicy = URL(string: "https://realunivlog.com/privacy")!
 }
 
@@ -42,8 +43,12 @@ struct SettingsView: View {
                 }
 
                 Section("サポート") {
-                    Link(destination: AppLinks.support) {
-                        Label("サポート", systemImage: "questionmark.circle")
+                    Link(destination: AppLinks.contact) {
+                        Label("お問い合わせ", systemImage: "envelope")
+                    }
+
+                    Link(destination: AppLinks.github) {
+                        Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
                     }
 
                     Link(destination: AppLinks.privacyPolicy) {
