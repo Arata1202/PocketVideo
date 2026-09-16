@@ -48,7 +48,15 @@ struct SettingsView: View {
                     }
 
                     Link(destination: AppLinks.github) {
-                        Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                        Label {
+                            Text("GitHub")
+                        } icon: {
+                            Image("GitHubMark")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
+                                .foregroundStyle(.primary)
+                        }
                     }
 
                     Link(destination: AppLinks.privacyPolicy) {
