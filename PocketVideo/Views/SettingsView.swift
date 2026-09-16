@@ -48,6 +48,10 @@ struct SettingsView: View {
                         Label("お問い合わせ", systemImage: "envelope")
                     }
 
+                    Link(destination: AppLinks.privacyPolicy) {
+                        Label("プライバシーポリシー", systemImage: "hand.raised")
+                    }
+
                     Link(destination: AppLinks.github) {
                         Label {
                             Text("GitHub")
@@ -58,10 +62,6 @@ struct SettingsView: View {
                                 .frame(width: githubIconSize, height: githubIconSize)
                                 .foregroundStyle(.primary)
                         }
-                    }
-
-                    Link(destination: AppLinks.privacyPolicy) {
-                        Label("プライバシーポリシー", systemImage: "hand.raised")
                     }
                 }
 
