@@ -54,7 +54,7 @@ struct SettingsView: View {
                             Image("GitHubMark")
                                 .resizable()
                                 .scaledToFit()
-                                .frame(width: 18, height: 18)
+                                .frame(width: 22, height: 22)
                                 .foregroundStyle(.primary)
                         }
                     }
