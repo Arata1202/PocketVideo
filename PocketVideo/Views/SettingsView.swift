@@ -12,6 +12,7 @@ struct SettingsView: View {
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
     @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
     @AppStorage("allowsExternalDisplayPlayback") private var allowsExternalDisplayPlayback = true
+    @ScaledMetric(relativeTo: .body) private var githubIconSize: CGFloat = 24
     @State private var isClearRecentConfirmationPresented = false
 
     var body: some View {
@@ -54,7 +55,7 @@ struct SettingsView: View {
                             Image("GitHubMark")
                                 .resizable()
                                 .scaledToFit()
-                                .frame(width: 22, height: 22)
+                                .frame(width: githubIconSize, height: githubIconSize)
                                 .foregroundStyle(.primary)
                         }
                     }
