@@ -188,22 +188,18 @@ struct PlayerHomeView: View {
         let fullWidth = geometry.size.width
         let naturalHeight = fullWidth / aspectRatio
         let height = max(naturalHeight, 180)
-        let presentsFullScreen = viewModel.hasVideo
-            && UIDevice.current.userInterfaceIdiom == .phone
-            && geometry.size.width > geometry.size.height
 
-        return playerSurface(presentsFullScreen: presentsFullScreen)
+        return playerSurface
             .frame(width: fullWidth, height: height)
     }
 
-    private func playerSurface(presentsFullScreen: Bool) -> some View {
+    private var playerSurface: some View {
         ZStack {
             Color.black
 
             PlayerView(
                 player: viewModel.player,
-                allowsPictureInPicture: allowsPictureInPicture,
-                presentsFullScreen: presentsFullScreen
+                allowsPictureInPicture: allowsPictureInPicture
             )
 
             if viewModel.showsLoadingIndicator {
