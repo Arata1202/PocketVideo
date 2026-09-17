@@ -5,6 +5,15 @@ struct PlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
     let allowsPictureInPicture: Bool
 
+    private static let playbackSpeeds = [
+        AVPlaybackSpeed(rate: 0.5, localizedName: "0.5×"),
+        AVPlaybackSpeed(rate: 0.75, localizedName: "0.75×"),
+        AVPlaybackSpeed(rate: 1, localizedName: "1×"),
+        AVPlaybackSpeed(rate: 1.25, localizedName: "1.25×"),
+        AVPlaybackSpeed(rate: 1.5, localizedName: "1.5×"),
+        AVPlaybackSpeed(rate: 2, localizedName: "2×"),
+    ]
+
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
@@ -17,6 +26,7 @@ struct PlayerView: UIViewControllerRepresentable {
         controller.allowsPictureInPicturePlayback = allowsPictureInPicture
         controller.canStartPictureInPictureAutomaticallyFromInline = allowsPictureInPicture
         controller.showsPlaybackControls = true
+        controller.speeds = Self.playbackSpeeds
         return controller
     }
 

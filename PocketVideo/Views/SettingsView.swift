@@ -1,7 +1,8 @@
 import SwiftUI
 
 private enum AppLinks {
-    static let support = URL(string: "https://realunivlog.com/")!
+    static let contact = URL(string: "https://realunivlog.com/contact")!
+    static let github = URL(string: "https://github.com/Arata1202/PocketVideo")!
     static let privacyPolicy = URL(string: "https://realunivlog.com/privacy")!
 }
 
@@ -10,6 +11,7 @@ struct SettingsView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
     @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
+    @ScaledMetric(relativeTo: .body) private var githubIconSize: CGFloat = 24
     @State private var isClearRecentConfirmationPresented = false
 
     var body: some View {
@@ -37,12 +39,24 @@ struct SettingsView: View {
                 }
 
                 Section("サポート") {
-                    Link(destination: AppLinks.support) {
-                        Label("サポート", systemImage: "questionmark.circle")
+                    Link(destination: AppLinks.contact) {
+                        Label("お問い合わせ", systemImage: "envelope")
                     }
 
                     Link(destination: AppLinks.privacyPolicy) {
                         Label("プライバシーポリシー", systemImage: "hand.raised")
+                    }
+
+                    Link(destination: AppLinks.github) {
+                        Label {
+                            Text("GitHub")
+                        } icon: {
+                            Image("GitHubMark")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: githubIconSize, height: githubIconSize)
+                                .foregroundStyle(.primary)
+                        }
                     }
                 }
 
