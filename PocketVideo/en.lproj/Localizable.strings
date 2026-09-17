@@ -1,0 +1,57 @@
+/* Home */
+"動画を準備中…" = "Preparing Video…";
+"iCloudからダウンロードしています" = "Downloading from iCloud";
+"キャンセル" = "Cancel";
+"動画を選択" = "Choose Video";
+"設定" = "Settings";
+"最近開いた動画" = "Recent Videos";
+"まだありません" = "No Recent Videos";
+"開いて再生します" = "Opens and plays the video.";
+"再生中 %@" = "Playing at %@";
+"%@ から再開" = "Resume from %@";
+
+/* Appearance */
+"自動" = "System";
+"ライト" = "Light";
+"ダーク" = "Dark";
+
+/* Settings */
+"再生" = "Playback";
+"ピクチャ・イン・ピクチャを許可" = "Allow Picture in Picture";
+"外部画面に動画だけ表示" = "Show Video Only on External Display";
+"外部ディスプレイ接続時に、接続先には動画だけを表示します。" = "When connected to an external display, only the video is shown on that display.";
+"表示" = "Appearance";
+"テーマ" = "Theme";
+"履歴" = "History";
+"履歴をすべて削除" = "Clear History";
+"サポート" = "Support";
+"お問い合わせ" = "Contact";
+"プライバシーポリシー" = "Privacy Policy";
+"アプリ情報" = "App Information";
+"対応形式" = "Supported Formats";
+"同じ拡張子でも、コーデックによってはこの端末で再生できない場合があります。" = "Some videos may not play on this device depending on the codec.";
+"バージョン" = "Version";
+"完了" = "Done";
+"履歴をすべて削除しますか？" = "Clear all history?";
+"削除" = "Delete";
+"最近開いた動画の履歴だけを削除します。元の動画ファイルは削除されません。" = "This only clears your recently opened video history. Your video files will not be deleted.";
+"Delete" = "Delete";
+
+/* Playback alerts */
+"ファイルにアクセスできません" = "Unable to Access File";
+"ファイルアプリからもう一度選択してください。" = "Select the file again from the Files app.";
+"ファイルを開けませんでした" = "Couldn’t Open File";
+"別のファイルを選ぶか、ファイルアプリで状態を確認してください。" = "Choose another file, or check its status in the Files app.";
+"動画を準備できませんでした" = "Couldn’t Prepare Video";
+"ファイルアプリでダウンロード状況を確認してから、もう一度試してください。" = "Check the download status in the Files app, then try again.";
+"ファイルアプリで端末内にダウンロードしてから、もう一度試してください。" = "Download the file to this device in the Files app, then try again.";
+"動画を利用できません" = "Video Unavailable";
+"履歴から削除しました。もう一度ファイルアプリから選択してください。" = "It has been removed from Recent Videos. Select it again from the Files app.";
+"AirPlayで再生できませんでした" = "Couldn’t Play via AirPlay";
+"接続先の機器または動画のコーデックが、AirPlayの直接再生に対応していない可能性があります。画面ミラーリングで再生できる場合があります。" = "The connected device or video codec may not support direct AirPlay playback. Screen Mirroring may work instead.";
+"動画を再生できませんでした" = "Couldn’t Play Video";
+"ファイルが壊れているか、この端末で再生できない形式の可能性があります。" = "The file may be damaged or in a format this device doesn’t support.";
+
+/* Store errors */
+"保存済みのファイル参照が無効です。" = "The saved file reference is no longer valid.";
+"保存済みの動画ファイルが見つかりません。" = "The saved video file couldn’t be found.";
