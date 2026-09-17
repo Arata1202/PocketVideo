@@ -432,7 +432,10 @@ struct PlayerHomeView: View {
            video.id == viewModel.currentRecentVideoID,
            viewModel.hasVideo || viewModel.isLoading {
             let position = max(viewModel.currentPlaybackPosition, video.lastPosition)
-            return "再生中 \(formatDuration(position))"
+            return String(
+                format: String(localized: "再生中 %@"),
+                formatDuration(position)
+            )
         }
 
         return resumeText(for: video.lastPosition)
@@ -448,7 +451,10 @@ struct PlayerHomeView: View {
 
     private func resumeText(for position: TimeInterval) -> String? {
         guard position >= minimumResumeDisplayPosition else { return nil }
-        return "\(formatDuration(position)) から再開"
+        return String(
+            format: String(localized: "%@ から再開"),
+            formatDuration(position)
+        )
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {

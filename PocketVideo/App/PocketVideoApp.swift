@@ -11,11 +11,11 @@ enum AppAppearance: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .system:
-            return "自動"
+            return String(localized: "自動")
         case .light:
-            return "ライト"
+            return String(localized: "ライト")
         case .dark:
-            return "ダーク"
+            return String(localized: "ダーク")
         }
     }
 

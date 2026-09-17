@@ -211,9 +211,9 @@ enum RecentVideoStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .staleBookmark:
-            return "保存済みのファイル参照が無効です。"
+            return String(localized: "保存済みのファイル参照が無効です。")
         case .fileUnavailable:
-            return "保存済みの動画ファイルが見つかりません。"
+            return String(localized: "保存済みの動画ファイルが見つかりません。")
         }
     }
 }
