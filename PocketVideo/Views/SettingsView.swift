@@ -11,7 +11,6 @@ struct SettingsView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
     @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
-    @AppStorage("allowsExternalDisplayPlayback") private var allowsExternalDisplayPlayback = true
     @ScaledMetric(relativeTo: .body) private var githubIconSize: CGFloat = 24
     @State private var isClearRecentConfirmationPresented = false
 
@@ -20,10 +19,6 @@ struct SettingsView: View {
             Form {
                 Section("再生") {
                     Toggle("ピクチャ・イン・ピクチャを許可", isOn: $allowsPictureInPicture)
-                    Toggle("外部画面に動画だけ表示", isOn: $allowsExternalDisplayPlayback)
-                    Text("外部ディスプレイ接続時に、接続先には動画だけを表示します。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
 
                 Section("表示") {

@@ -10,7 +10,6 @@ struct PlayerHomeView: View {
     @EnvironmentObject private var recentStore: RecentVideoStore
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
-    @AppStorage("allowsExternalDisplayPlayback") private var allowsExternalDisplayPlayback = true
     @StateObject private var viewModel = PlayerViewModel()
     @State private var isFileImporterPresented = false
     @State private var isPlayerPresented = false
@@ -73,9 +72,6 @@ struct PlayerHomeView: View {
             openPendingURLIfReady()
         }
         .onChange(of: viewModel.hasVideo) { _, _ in
-            updateExternalDisplayPlayback()
-        }
-        .onChange(of: allowsExternalDisplayPlayback) { _, _ in
             updateExternalDisplayPlayback()
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -161,7 +157,7 @@ struct PlayerHomeView: View {
     private func updateExternalDisplayPlayback() {
         ExternalDisplayPlaybackCoordinator.shared.update(
             player: viewModel.player,
-            isEnabled: viewModel.hasVideo && allowsExternalDisplayPlayback
+            isEnabled: viewModel.hasVideo
         )
     }
 
