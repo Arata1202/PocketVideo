@@ -1,22 +1,22 @@
-# コントリビューション
+# Contributing
 
-Pocket Videoへの不具合報告、改善提案、ドキュメント修正、プルリクエストを歓迎します。
+Bug reports, feature suggestions, documentation fixes, and pull requests for Pocket Video are welcome.
 
-## 不具合報告・改善提案
+## Bug Reports and Feature Requests
 
-[Issues](https://github.com/Arata1202/PocketVideo/issues)で同じ報告がないか確認し、該当するフォームから投稿してください。
-添付する動画や画像に、個人情報や認証情報が含まれないようにしてください。
+Check [Issues](https://github.com/Arata1202/PocketVideo/issues) for existing reports before submitting the appropriate form.
+Make sure that any videos or images you attach do not contain personal information or credentials.
 
-## 開発
+## Development
 
-環境構築とテスト方法は[README](README.md#開発環境)を参照してください。
-既存コードの書き方に合わせ、動作を変更する場合は必要なユニットテストを追加・更新してください。
+See the [README](README.md#development-setup) for setup and testing instructions.
+Follow the existing code style, and add or update unit tests when changing behavior.
 
-## プルリクエスト
+## Pull Requests
 
-小さな修正は直接PRを送っていただいて構いません。
-大きな機能追加や設計変更は、着手前にIssueで相談してください。
+Small fixes can be submitted directly as pull requests.
+For major features or design changes, please open an issue for discussion before starting work.
 
-1. リポジトリをforkし、`main` から作業ブランチを作成します。
-2. 変更を1つの目的に絞り、無関係な変更を含めないようにします。
-3. 変更内容に応じてビルド・テストなどの確認を行い、`main` に向けてPRを作成します。
+1. Fork the repository and create a working branch from `main`.
+2. Keep each change focused on one purpose and avoid unrelated changes.
+3. Run the relevant checks, such as builds and tests, and open a pull request against `main`.

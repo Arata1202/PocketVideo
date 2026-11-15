@@ -1,33 +1,33 @@
-name: 不具合報告
-description: 正しく動作しない箇所を報告する
+name: Bug report
+description: Report something that is not working as expected
 body:
   - type: textarea
     id: description
     attributes:
-      label: 問題の説明
+      label: Description
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: 再現手順
-      description: 問題が起きるまでの操作を書いてください。
+      label: Steps to reproduce
+      description: Describe the steps that lead to the problem.
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: 期待する動作
+      label: Expected behavior
     validations:
       required: true
   - type: textarea
     id: environment
     attributes:
-      label: 利用環境
-      description: 端末名、iOSのバージョン、Pocket Videoのバージョンを書いてください。
+      label: Environment
+      description: Include your device model, iOS version, and Pocket Video version.
     validations:
       required: true
   - type: textarea
     id: context
     attributes:
-      label: 補足（任意）
+      label: Additional context (optional)

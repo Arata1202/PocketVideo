@@ -7,22 +7,22 @@
 
 # Pocket Video
 
-ファイルに保存した動画を再生できる、無料のiOS動画プレイヤーです。
+Pocket Video is a free iOS video player for videos saved in Files.
 
-[App Storeでダウンロード](https://apps.apple.com/jp/app/pocket-video/id6783846586)
+[Download on the App Store](https://apps.apple.com/jp/app/pocket-video/id6783846586)
 
-## 主な機能
+## Features
 
-- ファイルアプリや共有メニューから動画を開く
-- 最近開いた動画を、前回の再生位置から再開
-- AirPlay・外部ディスプレイでの再生
-- ピクチャ・イン・ピクチャでの再生
+- Open videos from the Files app or the share sheet
+- Resume recently opened videos from where you left off
+- Play videos using AirPlay or an external display
+- Play videos in Picture in Picture
 
-## 開発環境
+## Development Setup
 
-macOSとXcode 26以降が必要です。アプリの対応OSはiOS 17以降です。
-Xcodeプロジェクトは `project.yml` からXcodeGenで生成します。
-以下の手順では[Homebrew](https://brew.sh/)を使います。
+You need macOS and Xcode 26 or later. The app supports iOS 17 and later.
+The Xcode project is generated from `project.yml` using XcodeGen.
+The following instructions use [Homebrew](https://brew.sh/).
 
 ```bash
 git clone https://github.com/Arata1202/PocketVideo.git
@@ -32,47 +32,47 @@ xcodegen generate
 open PocketVideo.xcodeproj
 ```
 
-Xcodeで `PocketVideo` スキームとiOSシミュレーターを選んで実行してください。
-実機で実行する場合は、Signing & Capabilitiesで自分の開発チームを設定してください。
+In Xcode, select the `PocketVideo` scheme and an iOS simulator, then run the app.
+To run on a physical device, select your development team under Signing & Capabilities.
 
-## テスト
+## Testing
 
 ```bash
 xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -showdestinations
 xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -destination 'platform=iOS Simulator,name=iPhone 16' test
 ```
 
-`iPhone 16` は、最初のコマンドで表示された利用可能なシミュレーター名に置き換えてください。
-CIではシミュレーター向けビルドとユニットテストを実行します。
-AirPlayや外部ディスプレイに関わる変更は、対応する実機で動作を確認してください。
+Replace `iPhone 16` with an available simulator name shown by the first command.
+CI builds for the simulator and runs unit tests.
+For changes involving AirPlay or external displays, also test on compatible physical devices.
 
-## 使用技術
+## Technology Stack
 
-| Category    | Technology Stack                  |
-| ----------- | --------------------------------- |
-| App         | Swift, SwiftUI                    |
+| Category    | Technology Stack                   |
+| ----------- | ---------------------------------- |
+| App         | Swift, SwiftUI                     |
 | Media       | AVFoundation, AVKit, MediaPlayer   |
 | Development | Xcode, XcodeGen                    |
-| Testing     | XCTest                            |
-| CI          | GitHub Actions                    |
-| Design      | Figma                             |
+| Testing     | XCTest                             |
+| CI          | GitHub Actions                     |
+| Design      | Figma                              |
 
-## ディレクトリ構成
+## Repository Structure
 
 ```text
-PocketVideo/       アプリ本体
-PocketVideoTests/  ユニットテスト
-Brand/             アプリアイコン
-project.yml        XcodeGenのプロジェクト定義
+PocketVideo/       App source
+PocketVideoTests/  Unit tests
+Brand/             App icon
+project.yml        XcodeGen project definition
 ```
 
-デザイン資料は[Figma](https://www.figma.com/design/l0hfS00kcTqVAzCtJFLiGZ/)にあります。
+Design resources are available on [Figma](https://www.figma.com/design/l0hfS00kcTqVAzCtJFLiGZ/).
 
-## コントリビューション
+## Contributing
 
-不具合報告、改善提案、ドキュメント修正、プルリクエストを歓迎します。
-参加方法は[コントリビューションガイド](CONTRIBUTING.md)をご覧ください。
+Bug reports, feature suggestions, documentation fixes, and pull requests are welcome.
+See the [contribution guide](CONTRIBUTING.md) for details.
 
-## ライセンス
+## License
 
 [MIT License](LICENSE)

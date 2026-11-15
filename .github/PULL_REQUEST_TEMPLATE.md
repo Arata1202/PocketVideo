@@ -1,5 +1,5 @@
-## 変更内容・理由
+## Changes and motivation
 
-## 関連Issue（任意）
+## Related issue (optional)
 
-## 確認方法・結果
+## Verification and results

@@ -1,15 +1,16 @@
-# セキュリティポリシー
+# Security Policy
 
-## 脆弱性の報告
+## Reporting a Vulnerability
 
-セキュリティ上の問題は、公開Issueに詳細を書かず、
-[お問い合わせフォーム](https://realunivlog.com/contact)から報告してください。
+Please report security issues through the [contact form](https://realunivlog.com/contact) rather than disclosing details in a public issue.
 
-可能な範囲で問題を確認し、修正や公開の見通しを報告者と共有します。
+The form is in Japanese: enter your email address in メールアドレス, the subject in 件名, and the details in 内容, then select 送信 to send. Please include “Pocket Video” in the subject.
 
-報奨金制度はありません。
+We will investigate as far as possible and share plans for a fix or disclosure with the reporter.
 
-## サポート対象
+There is no bug bounty program.
 
-セキュリティ修正は、最新のApp Store配信版とmainブランチを対象とします。
-過去の配信版への個別の修正提供は行いません。
+## Supported Versions
+
+Security fixes are provided for the latest App Store release and the `main` branch.
+Fixes are not provided separately for older releases.
