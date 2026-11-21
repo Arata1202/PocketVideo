@@ -29,6 +29,7 @@ final class RecentVideoStore: ObservableObject {
         return request
     }
 
+    /// Returns a playable entry even when a later history deletion prevents saving it.
     func addOrUpdate(url: URL, position: TimeInterval? = nil, request: PendingOpen? = nil) async throws -> RecentVideo {
         let pending = request ?? beginOpening()
         await finishMigration()

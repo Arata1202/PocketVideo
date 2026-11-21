@@ -1,4 +1,5 @@
 import AVFoundation
+import MediaPlayer
 import UIKit
 import XCTest
 @testable import PocketVideo
@@ -37,29 +38,58 @@ final class PlaybackWindowTests: XCTestCase {
         XCTAssertEqual(store.videos.first?.lastPosition, latest)
     }
 
-    func testExternalOutputSwitchesBackAndClosesAfterLastPlayer() throws {
+    func testExternalOutputSwitchesBackAndClosesAfterLastPlayer() async throws {
+        try await verifyPlaybackRouting(closeSelectedFirst: true)
+    }
+
+    func testClosingBackgroundWindowKeepsSelectedPlayerAcrossReconnect() async throws {
+        try await verifyPlaybackRouting(closeSelectedFirst: false)
+    }
+
+    private func verifyPlaybackRouting(closeSelectedFirst: Bool) async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let existingWindows = Set(scene.windows.map(ObjectIdentifier.init))
         let output = ExternalDisplayPlaybackCoordinator.shared
-        let first = AVPlayer()
-        let second = AVPlayer()
-        output.connect(windowScene: scene)
+        let first = PlayerViewModel()
+        let second = PlayerViewModel()
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         defer {
-            output.update(player: second, isEnabled: false)
-            output.update(player: first, isEnabled: false)
+            first.closeCurrentVideo()
+            second.closeCurrentVideo()
             output.disconnect(windowScene: scene)
+            try? FileManager.default.removeItem(at: url)
         }
-        output.update(player: first, isEnabled: true)
-        let window = try XCTUnwrap(scene.windows.first { !existingWindows.contains(ObjectIdentifier($0)) })
-        let layer = try XCTUnwrap(window.rootViewController?.view.layer as? AVPlayerLayer)
-        output.update(player: second, isEnabled: true)
-        XCTAssertTrue(layer.player === second)
-        output.update(player: second, isEnabled: false)
-        XCTAssertFalse(window.isHidden)
-        XCTAssertTrue(layer.player === first)
-        output.update(player: first, isEnabled: false)
-        XCTAssertTrue(window.isHidden)
-        XCTAssertNil(layer.player)
+        try writeTestMedia(to: url)
+        output.connect(windowScene: scene)
+
+        func currentLayer() throws -> AVPlayerLayer {
+            let window = try XCTUnwrap(scene.windows.first { !$0.isHidden && !existingWindows.contains(ObjectIdentifier($0)) })
+            return try XCTUnwrap(window.rootViewController?.view.layer as? AVPlayerLayer)
+        }
+        func checkOwner(_ model: PlayerViewModel, title: String) throws {
+            XCTAssertTrue(try currentLayer().player === model.player)
+            XCTAssertEqual(MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, title)
+            XCTAssertTrue(MPRemoteCommandCenter.shared().pauseCommand.isEnabled)
+        }
+        for (model, title) in [(first, "First"), (second, "Second")] {
+            XCTAssertTrue(model.open(url: url, displayTitle: title))
+            for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+            XCTAssertTrue(model.isPlaying)
+            try checkOwner(model, title: title)
+        }
+        let remaining = closeSelectedFirst ? first : second
+        let title = closeSelectedFirst ? "First" : "Second"
+        if closeSelectedFirst { second.closeCurrentVideo() } else { first.closeCurrentVideo() }
+        try checkOwner(remaining, title: title)
+        let previousLayer = try currentLayer()
+        output.disconnect(windowScene: scene)
+        XCTAssertNil(previousLayer.player)
+        output.connect(windowScene: scene)
+        try checkOwner(remaining, title: title)
+        let finalLayer = try currentLayer()
+        remaining.closeCurrentVideo()
+        XCTAssertNil(finalLayer.player)
+        XCTAssertFalse(MPRemoteCommandCenter.shared().pauseCommand.isEnabled)
     }
 
     private func writeTestMedia(to url: URL) throws {

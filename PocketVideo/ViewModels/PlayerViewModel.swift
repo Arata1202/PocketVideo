@@ -11,7 +11,7 @@ final class PlayerViewModel: ObservableObject {
         weak var model: PlayerViewModel?
     }
     private static var playbackWindows: [PlaybackWindow] = []
-    private static weak var remoteCommandOwner: PlayerViewModel?
+    private static weak var systemPlaybackOwner: PlayerViewModel?
     @Published private(set) var isPlaying = false
     @Published var hasVideo = false
     @Published var isLoading = false
@@ -312,28 +312,36 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func releaseSystemPlaybackControls() {
-        ExternalDisplayPlaybackCoordinator.shared.update(player: player, isEnabled: false)
         Self.playbackWindows.removeAll { $0.model == nil || $0.model === self }
         guard !remoteCommandTargets.isEmpty else { return }
         removeRemoteCommandTargets()
-        clearNowPlayingInfo()
-        setRemoteCommandsEnabled(false)
-        Self.remoteCommandOwner = nil
 
         let remaining = Self.playbackWindows.compactMap(\.model)
         let successor = remaining.last { $0.player.timeControlStatus == .playing } ?? remaining.last
-        successor?.claimSystemPlaybackControls()
-        successor?.updateNowPlayingInfo()
+        Self.selectSystemPlaybackOwner(successor)
+        if successor == nil {
+            clearNowPlayingInfo()
+            setRemoteCommandsEnabled(false)
+        }
     }
 
     private func claimSystemPlaybackControls() {
-        guard Self.remoteCommandOwner !== self else { return }
-        Self.playbackWindows.removeAll { $0.model == nil || $0.model === self }
-        Self.playbackWindows.append(PlaybackWindow(model: self))
-        Self.remoteCommandOwner?.removeRemoteCommandTargets()
-        Self.remoteCommandOwner = self
-        ExternalDisplayPlaybackCoordinator.shared.update(player: player, isEnabled: true)
+        guard Self.systemPlaybackOwner !== self else { return }
+        Self.systemPlaybackOwner?.removeRemoteCommandTargets()
+        Self.selectSystemPlaybackOwner(self)
+    }
 
+    private static func selectSystemPlaybackOwner(_ owner: PlayerViewModel?) {
+        systemPlaybackOwner = owner
+        ExternalDisplayPlaybackCoordinator.shared.display(owner?.player)
+        guard let owner else { return }
+        playbackWindows.removeAll { $0.model == nil || $0.model === owner }
+        playbackWindows.append(PlaybackWindow(model: owner))
+        owner.installRemoteCommandTargets()
+        owner.updateNowPlayingInfo()
+    }
+
+    private func installRemoteCommandTargets() {
         let commandCenter = MPRemoteCommandCenter.shared()
         commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 10)]
         commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 10)]
@@ -414,7 +422,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func updateNowPlayingInfo(elapsedTime overrideElapsedTime: TimeInterval? = nil, playbackRate overridePlaybackRate: Float? = nil) {
-        guard Self.remoteCommandOwner === self else { return }
+        guard Self.systemPlaybackOwner === self else { return }
         guard hasVideo || currentVideoTitle != nil else {
             clearNowPlayingInfo()
             return
