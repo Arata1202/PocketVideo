@@ -1,6 +1,6 @@
 /* Home */
-"動画を準備中…" = "Preparing Video…";
-"iCloudからダウンロードしています" = "Downloading from iCloud";
+"iCloudからダウンロード中" = "Downloading from iCloud";
+"ダウンロードの進捗" = "Download progress";
 "キャンセル" = "Cancel";
 "動画を選択" = "Choose Video";
 "設定" = "Settings";

@@ -21,6 +21,7 @@ struct PlayerHomeView: View {
     }
     @State private var pendingOpen: OpenRequest?
     @State private var isPreparingFile = false
+    @State private var downloadFraction: Double?
     @State private var preparingFileName: String?
     @State private var filePreparationTask: Task<Void, Never>?
     @State private var filePreparationID = UUID()
@@ -89,14 +90,10 @@ struct PlayerHomeView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 12) {
-                ProgressView()
-
-                Text("動画を準備中…")
+                Text("iCloudからダウンロード中")
                     .font(.headline)
-
-                Text("iCloudからダウンロードしています")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .accessibilityAddTraits(.isHeader)
 
                 if let preparingFileName {
                     Text(preparingFileName)
@@ -104,6 +101,21 @@ struct PlayerHomeView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                }
+
+                if let downloadFraction {
+                    HStack(spacing: 10) {
+                        ProgressView(value: downloadFraction)
+                            .progressViewStyle(.linear)
+                            .accessibilityLabel("ダウンロードの進捗")
+                        Text(downloadFraction, format: .percent.precision(.fractionLength(0)))
+                            .font(.subheadline.monospacedDigit())
+                            .fixedSize()
+                            .accessibilityHidden(true)
+                    }
+                } else {
+                    ProgressView()
+                        .accessibilityLabel("ダウンロードの進捗")
                 }
 
                 Button("キャンセル") {
@@ -282,19 +294,14 @@ struct PlayerHomeView: View {
 
     private func prepareAndOpen(_ request: OpenRequest) {
         let url = request.url
-        filePreparationTask?.cancel()
-        filePreparationID = UUID()
-        filePreparationTask = nil
-        isPreparingFile = false
-        preparingFileName = nil
+        cancelFilePreparation()
 
         if isFileReadyToOpen(url) {
             filePreparationTask = Task { await openSelected(request) }
             return
         }
 
-        let preparationID = UUID()
-        filePreparationID = preparationID
+        let preparationID = filePreparationID
         preparingFileName = url.lastPathComponent
         isPreparingFile = true
         viewModel.clearAlert()
@@ -304,12 +311,13 @@ struct PlayerHomeView: View {
                 if filePreparationID == preparationID {
                     isPreparingFile = false
                     preparingFileName = nil
+                    downloadFraction = nil
                     filePreparationTask = nil
                 }
             }
 
             do {
-                let preparedURL = try await prepareFileForPlayback(url)
+                let preparedURL = try await prepareFileForPlayback(url, preparationID: preparationID)
                 guard !Task.isCancelled, filePreparationID == preparationID else { return }
                 let prepared = OpenRequest(url: preparedURL, historyRequest: request.historyRequest)
                 if scenePhase == .active {
@@ -332,9 +340,11 @@ struct PlayerHomeView: View {
         filePreparationTask = nil
         isPreparingFile = false
         preparingFileName = nil
+        downloadFraction = nil
     }
 
-    private func prepareFileForPlayback(_ url: URL) async throws -> URL {
+    @MainActor
+    private func prepareFileForPlayback(_ url: URL, preparationID: UUID) async throws -> URL {
         let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
         defer {
             if didAccessSecurityScope {
@@ -346,28 +356,36 @@ struct PlayerHomeView: View {
             return url
         }
 
-        do {
-            try FileManager.default.startDownloadingUbiquitousItem(at: url)
-        } catch {
-            guard isFileReadyToOpen(url) else { throw error }
-        }
-
-        var downloadURL = url
-        while true {
-            try Task.checkCancellation()
-
-            downloadURL.removeCachedResourceValue(forKey: .ubiquitousItemDownloadingStatusKey)
-            downloadURL.removeCachedResourceValue(forKey: .ubiquitousItemDownloadingErrorKey)
-            let values = try downloadURL.resourceValues(forKeys: [
-                .ubiquitousItemDownloadingStatusKey, .ubiquitousItemDownloadingErrorKey
-            ])
-            if values.ubiquitousItemDownloadingStatus == .current || values.ubiquitousItemDownloadingStatus == .downloaded {
-                return url
+        let document = PlaybackDownloadDocument(fileURL: url)
+        let monitor = Task { @MainActor in
+            while !Task.isCancelled && filePreparationID == preparationID {
+                if document.documentState.contains(.progressAvailable),
+                   let progress = document.progress, !progress.isIndeterminate,
+                   progress.totalUnitCount > 0, (0...1).contains(progress.fractionCompleted) {
+                    #if DEBUG
+                    if downloadFraction == nil { print("[CloudProgress] document percentage available") }
+                    #endif
+                    downloadFraction = progress.fractionCompleted
+                }
+                try? await Task.sleep(for: .milliseconds(250))
             }
-
-            if let error = values.ubiquitousItemDownloadingError { throw error }
-            try await Task.sleep(nanoseconds: 500_000_000)
         }
+        let opened = await document.open()
+        monitor.cancel()
+        #if DEBUG
+        if filePreparationID == preparationID {
+            print("[CloudProgress] document opened=\(opened) reportedPercentage=\(downloadFraction != nil)")
+        }
+        #endif
+        guard opened else {
+            try Task.checkCancellation()
+            throw CocoaError(.fileReadUnknown)
+        }
+        let preparedURL = document.fileURL
+        let closed = await document.close()
+        try Task.checkCancellation()
+        guard closed else { throw CocoaError(.fileReadUnknown) }
+        return preparedURL
     }
 
     private func openSelected(_ request: OpenRequest) async {
@@ -409,6 +427,9 @@ struct PlayerHomeView: View {
             .isUbiquitousItemKey,
             .ubiquitousItemDownloadingStatusKey
         ])
+        #if DEBUG
+        print("[CloudProgress] iCloud=\(String(describing: resourceValues?.isUbiquitousItem)) status=\(resourceValues?.ubiquitousItemDownloadingStatus?.rawValue ?? "unknown")")
+        #endif
         guard resourceValues?.isUbiquitousItem == true else { return true }
 
         switch resourceValues?.ubiquitousItemDownloadingStatus {
@@ -466,5 +487,12 @@ struct PlayerHomeView: View {
         }
 
         return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+private final class PlaybackDownloadDocument: UIDocument {
+    override func read(from url: URL) throws {
+        // UIDocument coordinates the download. AVPlayer reads the video itself.
+        try FileHandle(forReadingFrom: url).close()
     }
 }

@@ -42,6 +42,7 @@ targets:
           - audio
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        NSDownloadsUbiquitousContents: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
