@@ -70,6 +70,7 @@ struct PocketVideoApp: App {
     var body: some Scene {
         WindowGroup {
             PlayerHomeView()
+                .tint(.accentColor)
                 .environmentObject(recentStore)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onAppear {

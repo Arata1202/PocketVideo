@@ -32,7 +32,7 @@
 "対応形式" = "Supported Formats";
 "同じ拡張子でも、コーデックによってはこの端末で再生できない場合があります。" = "Some videos may not play on this device depending on the codec.";
 "バージョン" = "Version";
-"完了" = "Done";
+"閉じる" = "Close";
 "履歴をすべて削除しますか？" = "Clear all history?";
 "削除" = "Delete";
 "最近開いた動画の履歴だけを削除します。元の動画ファイルは削除されません。" = "This only clears your recently opened video history. Your video files will not be deleted.";

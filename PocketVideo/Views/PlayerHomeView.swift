@@ -98,7 +98,7 @@ struct PlayerHomeView: View {
                 if let preparingFileName {
                     Text(preparingFileName)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTextColor.supporting)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -122,6 +122,7 @@ struct PlayerHomeView: View {
                     cancelFilePreparation()
                 }
                 .buttonStyle(.bordered)
+                .tint(Color.primary)
             }
             .frame(maxWidth: 260)
             .padding(20)
@@ -224,10 +225,10 @@ struct PlayerHomeView: View {
 
     @ViewBuilder
     private func recentList(showsNowPlaying: Bool) -> some View {
-        Section("最近開いた動画") {
+        Section {
             if recentStore.videos.isEmpty {
                 Text("まだありません")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppTextColor.supporting)
             } else {
                 ForEach(recentStore.videos) { video in
                     let isCurrent = showsNowPlaying && video.id == viewModel.currentRecentVideoID
@@ -243,6 +244,8 @@ struct PlayerHomeView: View {
                 }
                 .onDelete(perform: deleteRecent)
             }
+        } header: {
+            Text("最近開いた動画").foregroundStyle(Color.primary)
         }
     }
 
@@ -260,7 +263,7 @@ struct PlayerHomeView: View {
                 if let playbackText {
                     Text(playbackText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTextColor.supporting)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -18,32 +18,44 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("再生") {
+                Section {
                     Toggle("ピクチャ・イン・ピクチャを許可", isOn: $allowsPictureInPicture)
+                } header: {
+                    Text("再生").foregroundStyle(Color.primary)
                 }
 
-                Section("表示") {
+                Section {
                     if dynamicTypeSize.isAccessibilitySize {
                         themePicker.pickerStyle(.inline)
                     } else {
                         themePicker.pickerStyle(.segmented)
                     }
+                } header: {
+                    Text("表示").foregroundStyle(Color.primary)
                 }
 
-                Section("履歴") {
-                    Button("履歴をすべて削除", role: .destructive) {
+                Section {
+                    Button(role: .destructive) {
                         isClearRecentConfirmationPresented = true
+                    } label: {
+                        Text("履歴をすべて削除").foregroundStyle(AppTextColor.red)
                     }
                     .disabled(recentStore.videos.isEmpty)
+                } header: {
+                    Text("履歴").foregroundStyle(Color.primary)
                 }
 
-                Section("サポート") {
+                Section {
                     Link(destination: AppLinks.contact) {
                         Label("お問い合わせ", systemImage: "envelope")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(.rect)
                     }
 
                     Link(destination: AppLinks.privacyPolicy) {
                         Label("プライバシーポリシー", systemImage: "hand.raised")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(.rect)
                     }
 
                     Link(destination: AppLinks.github) {
@@ -56,22 +68,32 @@ struct SettingsView: View {
                                 .frame(width: githubIconSize, height: githubIconSize)
                                 .foregroundStyle(.primary)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(.rect)
                     }
+                } header: {
+                    Text("サポート").foregroundStyle(Color.primary)
                 }
 
-                Section("アプリ情報") {
-                    LabeledContent("対応形式", value: "MP4, MOV, M4V, 3GP, 3G2")
+                Section {
+                    LabeledContent("対応形式") {
+                        Text(verbatim: "MP4, MOV, M4V, 3GP, 3G2").foregroundStyle(Color.primary)
+                    }
                     Text("同じ拡張子でも、コーデックによってはこの端末で再生できない場合があります。")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                    LabeledContent("バージョン", value: appVersion)
+                        .foregroundStyle(AppTextColor.supporting)
+                    LabeledContent("バージョン") {
+                        Text(verbatim: appVersion).foregroundStyle(Color.primary)
+                    }
+                } header: {
+                    Text("アプリ情報").foregroundStyle(Color.primary)
                 }
             }
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("完了") {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("閉じる") {
                         dismiss()
                     }
                 }
