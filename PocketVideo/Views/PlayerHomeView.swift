@@ -218,31 +218,34 @@ struct PlayerHomeView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(recentStore.videos) { video in
-                    Button {
-                        openRecent(video)
-                    } label: {
-                        recentVideoRow(video, showsNowPlaying: showsNowPlaying)
+                    let isCurrent = showsNowPlaying && video.id == viewModel.currentRecentVideoID
+                        && (viewModel.hasVideo || viewModel.isLoading)
+                    let row = recentVideoRow(video, playbackText: playbackText(for: video, isCurrent: isCurrent))
+                    if isCurrent {
+                        row.accessibilityElement(children: .combine)
+                    } else {
+                        Button { openRecent(video) } label: { row }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("開いて再生します")
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(accessibilityLabel(for: video, showsNowPlaying: showsNowPlaying))
-                    .accessibilityHint("開いて再生します")
                 }
                 .onDelete(perform: deleteRecent)
             }
         }
     }
 
-    private func recentVideoRow(_ video: RecentVideo, showsNowPlaying: Bool) -> some View {
+    private func recentVideoRow(_ video: RecentVideo, playbackText: String?) -> some View {
         HStack(spacing: 12) {
             Image(systemName: "film")
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(video.title)
                     .lineLimit(1)
                     .truncationMode(.middle)
 
-                if let playbackText = playbackText(for: video, showsNowPlaying: showsNowPlaying) {
+                if let playbackText {
                     Text(playbackText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -432,10 +435,8 @@ struct PlayerHomeView: View {
             .forEach(recentStore.remove)
     }
 
-    private func playbackText(for video: RecentVideo, showsNowPlaying: Bool) -> String? {
-        if showsNowPlaying,
-           video.id == viewModel.currentRecentVideoID,
-           viewModel.hasVideo {
+    private func playbackText(for video: RecentVideo, isCurrent: Bool) -> String? {
+        if isCurrent {
             let position = viewModel.currentPlaybackPosition
             return String(
                 format: viewModel.isPlaying ? String(localized: "再生中 %@") : String(localized: "再生位置 %@"),
@@ -444,14 +445,6 @@ struct PlayerHomeView: View {
         }
 
         return resumeText(for: video.lastPosition)
-    }
-
-    private func accessibilityLabel(for video: RecentVideo, showsNowPlaying: Bool) -> String {
-        if let playbackText = playbackText(for: video, showsNowPlaying: showsNowPlaying) {
-            return "\(video.title), \(playbackText)"
-        }
-
-        return video.title
     }
 
     private func resumeText(for position: TimeInterval) -> String? {
