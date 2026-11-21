@@ -7,15 +7,20 @@ final class ExternalDisplayPlaybackCoordinator {
 
     private var window: UIWindow?
     private var playerViewController: ExternalPlayerViewController?
-    private weak var player: AVPlayer?
-    private var isEnabled = false
+    private struct AvailablePlayer {
+        weak var player: AVPlayer?
+    }
+
+    private var players: [AvailablePlayer] = []
     private weak var windowScene: UIWindowScene?
 
     private init() {}
 
     func update(player: AVPlayer, isEnabled: Bool) {
-        self.player = player
-        self.isEnabled = isEnabled
+        players.removeAll { $0.player == nil || $0.player === player }
+        if isEnabled {
+            players.append(AvailablePlayer(player: player))
+        }
         configureOutput()
     }
 
@@ -31,7 +36,7 @@ final class ExternalDisplayPlaybackCoordinator {
     }
 
     private func configureOutput() {
-        guard isEnabled, let player, let windowScene else {
+        guard let player = players.last(where: { $0.player != nil })?.player, let windowScene else {
             tearDownOutput()
             return
         }

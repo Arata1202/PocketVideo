@@ -15,7 +15,11 @@ struct PlayerHomeView: View {
     @State private var isPlayerPresented = false
     @State private var isSettingsPresented = false
     @State private var hasAppeared = false
-    @State private var pendingOpenURL: URL?
+    private struct OpenRequest {
+        let url: URL
+        let historyRequest: RecentVideoStore.PendingOpen
+    }
+    @State private var pendingOpen: OpenRequest?
     @State private var isPreparingFile = false
     @State private var preparingFileName: String?
     @State private var filePreparationTask: Task<Void, Never>?
@@ -68,11 +72,7 @@ struct PlayerHomeView: View {
         .onAppear {
             hasAppeared = true
             viewModel.attachStore(recentStore)
-            updateExternalDisplayPlayback()
             openPendingURLIfReady()
-        }
-        .onChange(of: viewModel.hasVideo) { _, _ in
-            updateExternalDisplayPlayback()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -152,13 +152,6 @@ struct PlayerHomeView: View {
                 toolbarButtons
             }
         }
-    }
-
-    private func updateExternalDisplayPlayback() {
-        ExternalDisplayPlaybackCoordinator.shared.update(
-            player: viewModel.player,
-            isEnabled: viewModel.hasVideo
-        )
     }
 
     private var toolbarButtons: some View {
@@ -274,17 +267,18 @@ struct PlayerHomeView: View {
     }
 
     private func queueOpenURL(_ url: URL) {
-        pendingOpenURL = url
+        pendingOpen = OpenRequest(url: url, historyRequest: recentStore.beginOpening())
         openPendingURLIfReady()
     }
 
     private func openPendingURLIfReady() {
-        guard hasAppeared, scenePhase == .active, let url = pendingOpenURL else { return }
-        pendingOpenURL = nil
-        prepareAndOpenURL(url)
+        guard hasAppeared, scenePhase == .active, let request = pendingOpen else { return }
+        pendingOpen = nil
+        prepareAndOpen(request)
     }
 
-    private func prepareAndOpenURL(_ url: URL) {
+    private func prepareAndOpen(_ request: OpenRequest) {
+        let url = request.url
         filePreparationTask?.cancel()
         filePreparationID = UUID()
         filePreparationTask = nil
@@ -292,7 +286,7 @@ struct PlayerHomeView: View {
         preparingFileName = nil
 
         if isFileReadyToOpen(url) {
-            openSelectedURL(url)
+            filePreparationTask = Task { await openSelected(request) }
             return
         }
 
@@ -314,10 +308,11 @@ struct PlayerHomeView: View {
             do {
                 let preparedURL = try await prepareFileForPlayback(url)
                 guard !Task.isCancelled, filePreparationID == preparationID else { return }
+                let prepared = OpenRequest(url: preparedURL, historyRequest: request.historyRequest)
                 if scenePhase == .active {
-                    openSelectedURL(preparedURL)
+                    await openSelected(prepared)
                 } else {
-                    pendingOpenURL = preparedURL
+                    pendingOpen = prepared
                 }
             } catch is CancellationError {
                 return
@@ -354,21 +349,33 @@ struct PlayerHomeView: View {
             guard isFileReadyToOpen(url) else { throw error }
         }
 
+        var downloadURL = url
         while true {
             try Task.checkCancellation()
 
-            if isFileReadyToOpen(url) {
+            downloadURL.removeCachedResourceValue(forKey: .ubiquitousItemDownloadingStatusKey)
+            downloadURL.removeCachedResourceValue(forKey: .ubiquitousItemDownloadingErrorKey)
+            let values = try downloadURL.resourceValues(forKeys: [
+                .ubiquitousItemDownloadingStatusKey, .ubiquitousItemDownloadingErrorKey
+            ])
+            if values.ubiquitousItemDownloadingStatus == .current || values.ubiquitousItemDownloadingStatus == .downloaded {
                 return url
             }
 
+            if let error = values.ubiquitousItemDownloadingError { throw error }
             try await Task.sleep(nanoseconds: 500_000_000)
         }
     }
 
-    private func openSelectedURL(_ url: URL) {
+    private func openSelected(_ request: OpenRequest) async {
         do {
             viewModel.saveCurrentPosition()
-            let recent = try recentStore.addOrUpdate(url: url)
+            let recent = try await recentStore.addOrUpdate(url: request.url, request: request.historyRequest)
+            try Task.checkCancellation()
+            guard scenePhase == .active else {
+                pendingOpen = request
+                return
+            }
             let storedURL = try recentStore.resolveURL(for: recent)
             guard viewModel.open(
                 url: storedURL,
@@ -380,6 +387,8 @@ struct PlayerHomeView: View {
                 return
             }
             isPlayerPresented = true
+        } catch is CancellationError {
+            return
         } catch {
             viewModel.showAlert(.fileOpenFailed)
         }
@@ -410,7 +419,7 @@ struct PlayerHomeView: View {
     private func openRecent(_ video: RecentVideo) {
         do {
             let url = try recentStore.resolveURL(for: video)
-            prepareAndOpenURL(url)
+            queueOpenURL(url)
         } catch {
             recentStore.remove(video)
             viewModel.showAlert(.recentVideoUnavailable)
@@ -426,10 +435,10 @@ struct PlayerHomeView: View {
     private func playbackText(for video: RecentVideo, showsNowPlaying: Bool) -> String? {
         if showsNowPlaying,
            video.id == viewModel.currentRecentVideoID,
-           viewModel.hasVideo || viewModel.isLoading {
-            let position = max(viewModel.currentPlaybackPosition, video.lastPosition)
+           viewModel.hasVideo {
+            let position = viewModel.currentPlaybackPosition
             return String(
-                format: String(localized: "再生中 %@"),
+                format: viewModel.isPlaying ? String(localized: "再生中 %@") : String(localized: "再生位置 %@"),
                 formatDuration(position)
             )
         }

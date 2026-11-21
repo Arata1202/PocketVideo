@@ -5,6 +5,14 @@ import Foundation
 final class RecentVideoStore: ObservableObject {
     @Published private(set) var videos: [RecentVideo] = []
 
+    private var migration: Task<[RecentVideo], Never>?
+    final class PendingOpen {
+        fileprivate var wasCleared = false
+        fileprivate var removedVideos: [RecentVideo] = []
+    }
+
+    private let pendingOpens = NSHashTable<PendingOpen>.weakObjects()
+    private var historyRevision = 0
     private let storageKey = "recentVideos"
     private let maxItems: Int
     private let userDefaults: UserDefaults
@@ -15,7 +23,53 @@ final class RecentVideoStore: ObservableObject {
         load()
     }
 
-    func addOrUpdate(url: URL, position: TimeInterval? = nil) throws -> RecentVideo {
+    func beginOpening() -> PendingOpen {
+        let request = PendingOpen()
+        pendingOpens.add(request)
+        return request
+    }
+
+    func addOrUpdate(url: URL, position: TimeInterval? = nil, request: PendingOpen? = nil) async throws -> RecentVideo {
+        let pending = request ?? beginOpening()
+        await finishMigration()
+        let candidate = try await Self.prepareVideo(url: url, position: position, history: videos)
+        while true {
+            try Task.checkCancellation()
+            let revision = historyRevision
+            let removed = pending.removedVideos
+            if pending.wasCleared || removed.contains(where: { $0.sourceKey == candidate.sourceKey }) {
+                return candidate
+            }
+            if !removed.isEmpty, await Self.matchID(for: candidate, in: removed) != nil {
+                return candidate
+            }
+            let matchID = await Self.matchID(for: candidate, in: videos)
+            try Task.checkCancellation()
+            // Another window may have opened or removed a video during comparison.
+            guard revision == historyRevision else { continue }
+            var result = candidate
+            if let existing = videos.first(where: { $0.id == matchID }) {
+                result = RecentVideo(
+                    id: existing.id, title: candidate.title, sourceKey: candidate.sourceKey,
+                    contentFingerprint: candidate.contentFingerprint,
+                    contentDigest: candidate.contentDigest, contentModificationDate: candidate.contentModificationDate,
+                    bookmarkData: candidate.bookmarkData, lastPosition: position ?? existing.lastPosition
+                )
+            }
+            videos.removeAll { $0.sourceKey == candidate.sourceKey || $0.id == matchID }
+            videos.insert(result, at: 0)
+            videos = Array(videos.prefix(maxItems))
+            historyRevision += 1
+            save()
+            return result
+        }
+    }
+
+    private nonisolated static func matchID(for candidate: RecentVideo, in videos: [RecentVideo]) async -> UUID? {
+        videos.first { matches($0, candidate) }?.id
+    }
+
+    private nonisolated static func prepareVideo(url: URL, position: TimeInterval?, history: [RecentVideo]) async throws -> RecentVideo {
         let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
         defer {
             if didAccessSecurityScope {
@@ -28,36 +82,19 @@ final class RecentVideoStore: ObservableObject {
         let sourceKey = Self.sourceKey(for: url)
         let contentFingerprint = try? Self.contentFingerprint(for: url)
 
-        if let index = videos.firstIndex(where: {
-            $0.matches(sourceKey: sourceKey, contentFingerprint: contentFingerprint)
-        }) {
-            var updated = videos.remove(at: index)
-            updated.title = title
-            updated.sourceKey = sourceKey
-            updated.contentFingerprint = contentFingerprint
-            updated.bookmarkData = bookmarkData
-            if let position {
-                updated.lastPosition = position
-            }
-            updated.updatedAt = Date()
-
-            videos.removeAll { $0.matches(sourceKey: sourceKey, contentFingerprint: contentFingerprint) }
-            videos.insert(updated, at: 0)
-            save()
-            return videos[0]
+        var metadataURL = url
+        metadataURL.removeCachedResourceValue(forKey: .contentModificationDateKey)
+        let modified = try? metadataURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        let cached = history.first {
+            $0.sourceKey == sourceKey && modified != nil && $0.contentModificationDate == modified
+                && contentFingerprint != nil && $0.contentFingerprint == contentFingerprint
         }
-
-        let video = RecentVideo(
-            title: title,
-            sourceKey: sourceKey,
-            contentFingerprint: contentFingerprint,
-            bookmarkData: bookmarkData,
-            lastPosition: position ?? 0
+        let digest = try cached?.contentDigest ?? fullContentDigest(for: url)
+        return RecentVideo(
+            title: title, sourceKey: sourceKey, contentFingerprint: contentFingerprint,
+            contentDigest: digest, contentModificationDate: modified,
+            bookmarkData: bookmarkData, lastPosition: position ?? 0
         )
-        videos.insert(video, at: 0)
-        videos = Array(videos.prefix(maxItems))
-        save()
-        return video
     }
 
     func updatePosition(for videoID: RecentVideo.ID, position: TimeInterval) {
@@ -69,17 +106,26 @@ final class RecentVideoStore: ObservableObject {
 
     func remove(_ video: RecentVideo) {
         guard let index = videos.firstIndex(where: { $0.id == video.id }) else { return }
-        videos.remove(at: index)
+        historyRevision += 1
+        let removed = videos.remove(at: index)
+        for request in pendingOpens.allObjects where !request.wasCleared {
+            request.removedVideos.append(removed)
+        }
         save()
     }
 
     func removeAll() {
+        for request in pendingOpens.allObjects {
+            request.wasCleared = true
+            request.removedVideos.removeAll()
+        }
+        historyRevision += 1
         videos.removeAll()
         save()
     }
 
     func resolveURL(for video: RecentVideo) throws -> URL {
-        let url = try resolvedBookmarkedURL(for: video)
+        let url = try Self.resolvedBookmarkedURL(for: video)
 
         let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
         defer {
@@ -94,22 +140,19 @@ final class RecentVideoStore: ObservableObject {
         return url
     }
 
-    private func resolvedBookmarkedURL(for video: RecentVideo) throws -> URL {
+    private nonisolated static func resolvedBookmarkedURL(for video: RecentVideo) throws -> URL {
         var isStale = false
-        let url = try URL(
+        // A stale bookmark can still resolve after a rename. Opening the resolved URL
+        // creates and persists a fresh bookmark in prepareVideo and addOrUpdate.
+        return try URL(
             resolvingBookmarkData: video.bookmarkData,
             options: [],
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
         )
-        if isStale {
-            throw RecentVideoStoreError.staleBookmark
-        }
-
-        return url
     }
 
-    private static func bookmarkData(for url: URL) throws -> Data {
+    private nonisolated static func bookmarkData(for url: URL) throws -> Data {
         try url.bookmarkData(
             options: [],
             includingResourceValuesForKeys: nil,
@@ -117,7 +160,7 @@ final class RecentVideoStore: ObservableObject {
         )
     }
 
-    private static func sourceKey(for url: URL) -> String {
+    private nonisolated static func sourceKey(for url: URL) -> String {
         url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
@@ -153,7 +196,18 @@ final class RecentVideoStore: ObservableObject {
         return "sampled-sha256:\(fileSize):\(digest)"
     }
 
-    private func migratedVideo(_ video: RecentVideo) -> RecentVideo {
+    private nonisolated static func fullContentDigest(for url: URL) throws -> String {
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        var hash = SHA256()
+        while let chunk = try file.read(upToCount: 1024 * 1024), !chunk.isEmpty {
+            try Task.checkCancellation()
+            hash.update(data: chunk)
+        }
+        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    private nonisolated static func migratedVideo(_ video: RecentVideo) -> RecentVideo {
         guard video.contentFingerprint == nil else { return video }
         guard let url = try? resolvedBookmarkedURL(for: video) else { return video }
 
@@ -172,11 +226,33 @@ final class RecentVideoStore: ObservableObject {
         return migrated
     }
 
-    private static func deduplicated(_ videos: [RecentVideo], maxItems: Int) -> [RecentVideo] {
+    private nonisolated static func matches(_ first: RecentVideo, _ second: RecentVideo) -> Bool {
+        if let lhs = first.contentDigest, let rhs = second.contentDigest {
+            return lhs == rhs
+        }
+        // Older history entries only have a sampled fingerprint.
+        if first.sourceKey == second.sourceKey {
+            return first.contentFingerprint == nil || second.contentFingerprint == nil
+                || first.contentFingerprint == second.contentFingerprint
+        }
+        // The sampled hash only narrows candidates. Two different edits can share both ends.
+        guard let fingerprint = first.contentFingerprint, fingerprint == second.contentFingerprint,
+              let lhs = try? resolvedBookmarkedURL(for: first),
+              let rhs = try? resolvedBookmarkedURL(for: second) else { return false }
+        let accessedLeft = lhs.startAccessingSecurityScopedResource()
+        let accessedRight = rhs.startAccessingSecurityScopedResource()
+        defer {
+            if accessedLeft { lhs.stopAccessingSecurityScopedResource() }
+            if accessedRight { rhs.stopAccessingSecurityScopedResource() }
+        }
+        return FileManager.default.contentsEqual(atPath: lhs.path, andPath: rhs.path)
+    }
+
+    private nonisolated static func deduplicated(_ videos: [RecentVideo], maxItems: Int) -> [RecentVideo] {
         var deduplicatedVideos: [RecentVideo] = []
 
         for video in videos {
-            guard !deduplicatedVideos.contains(where: { $0.matches(video) }) else { continue }
+            guard !deduplicatedVideos.contains(where: { $0.sourceKey == video.sourceKey || matches($0, video) }) else { continue }
             deduplicatedVideos.append(video)
 
             if deduplicatedVideos.count == maxItems {
@@ -190,10 +266,31 @@ final class RecentVideoStore: ObservableObject {
     private func load() {
         guard let data = userDefaults.data(forKey: storageKey) else { return }
         let loadedVideos = (try? JSONDecoder().decode([RecentVideo].self, from: data)) ?? []
-        let migratedVideos = loadedVideos.map(migratedVideo)
-        videos = Self.deduplicated(migratedVideos, maxItems: maxItems)
+        videos = loadedVideos
+        guard !loadedVideos.isEmpty else { return }
+        let limit = maxItems
+        migration = Task.detached {
+            let migrated = loadedVideos.map(Self.migratedVideo)
+            return Self.deduplicated(migrated, maxItems: limit)
+        }
+        Task { await finishMigration() }
+    }
 
-        if videos != loadedVideos {
+    func finishMigration() async {
+        guard let pending = migration else { return }
+        let migrated = await pending.value
+        guard migration != nil else { return }
+        migration = nil
+        // Preserve removals and position updates made while old bookmarks were being read.
+        let current = Dictionary(videos.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let merged = migrated.compactMap { entry -> RecentVideo? in
+            guard var video = current[entry.id] else { return nil }
+            video.contentFingerprint = entry.contentFingerprint
+            video.sourceKey = entry.sourceKey
+            return video
+        }
+        if videos != merged {
+            videos = merged
             save()
         }
     }
@@ -205,29 +302,12 @@ final class RecentVideoStore: ObservableObject {
 }
 
 enum RecentVideoStoreError: LocalizedError {
-    case staleBookmark
     case fileUnavailable
 
     var errorDescription: String? {
         switch self {
-        case .staleBookmark:
-            return String(localized: "保存済みのファイル参照が無効です。")
         case .fileUnavailable:
             return String(localized: "保存済みの動画ファイルが見つかりません。")
         }
-    }
-}
-
-private extension RecentVideo {
-    func matches(_ other: RecentVideo) -> Bool {
-        matches(sourceKey: other.sourceKey, contentFingerprint: other.contentFingerprint)
-    }
-
-    func matches(sourceKey: String, contentFingerprint: String?) -> Bool {
-        if let contentFingerprint, let existingFingerprint = self.contentFingerprint {
-            return existingFingerprint == contentFingerprint
-        }
-
-        return self.sourceKey == sourceKey
     }
 }

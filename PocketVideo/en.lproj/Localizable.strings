@@ -7,6 +7,7 @@
 "最近開いた動画" = "Recent Videos";
 "まだありません" = "No Recent Videos";
 "開いて再生します" = "Opens and plays the video.";
+"再生位置 %@" = "Position: %@";
 "再生中 %@" = "Playing at %@";
 "%@ から再開" = "Resume from %@";
 

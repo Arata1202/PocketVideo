@@ -8,6 +8,7 @@ private enum AppLinks {
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var recentStore: RecentVideoStore
     @AppStorage("appAppearance") private var appAppearance = AppAppearance.system.rawValue
     @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
@@ -22,13 +23,11 @@ struct SettingsView: View {
                 }
 
                 Section("表示") {
-                    Picker("テーマ", selection: $appAppearance) {
-                        ForEach(AppAppearance.allCases) { appearance in
-                            Text(appearance.title)
-                                .tag(appearance.rawValue)
-                        }
+                    if dynamicTypeSize.isAccessibilitySize {
+                        themePicker.pickerStyle(.inline)
+                    } else {
+                        themePicker.pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
                 }
 
                 Section("履歴") {
@@ -85,6 +84,14 @@ struct SettingsView: View {
             }
         } message: {
             Text("最近開いた動画の履歴だけを削除します。元の動画ファイルは削除されません。")
+        }
+    }
+
+    private var themePicker: some View {
+        Picker("テーマ", selection: $appAppearance) {
+            ForEach(AppAppearance.allCases) { appearance in
+                Text(appearance.title).tag(appearance.rawValue)
+            }
         }
     }
 

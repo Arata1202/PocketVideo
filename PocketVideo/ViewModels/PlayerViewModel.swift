@@ -7,6 +7,12 @@ import MediaPlayer
 @MainActor
 final class PlayerViewModel: ObservableObject {
     @Published var player = AVPlayer()
+    private struct PlaybackWindow {
+        weak var model: PlayerViewModel?
+    }
+    private static var playbackWindows: [PlaybackWindow] = []
+    private static weak var remoteCommandOwner: PlayerViewModel?
+    @Published private(set) var isPlaying = false
     @Published var hasVideo = false
     @Published var isLoading = false
     @Published var showsLoadingIndicator = false
@@ -39,6 +45,7 @@ final class PlayerViewModel: ObservableObject {
     private var didFinishPlayback = false
     private var didUseExternalPlayback = false
     private var openRequestID = UUID()
+    private var lastSavedPosition: TimeInterval?
     private var canSaveCurrentPosition = false
     private var shouldResumeAfterAudioSessionInterruption = false
 
@@ -46,8 +53,6 @@ final class PlayerViewModel: ObservableObject {
         player.allowsExternalPlayback = true
         player.usesExternalPlaybackWhileExternalScreenIsActive = false
         player.externalPlaybackVideoGravity = .resizeAspect
-        configureAudioSession()
-        configureRemoteCommands()
         observePlayerPlaybackState()
         observeAudioSession()
         addPlaybackObservers()
@@ -63,7 +68,7 @@ final class PlayerViewModel: ObservableObject {
             externalPlaybackObservation?.invalidate()
             aspectRatioLoadTask?.cancel()
             loadingIndicatorTask?.cancel()
-            removeRemoteCommandTargets()
+            releaseSystemPlaybackControls()
             stopSecurityScopedAccess()
             if let playbackEndObserver {
                 NotificationCenter.default.removeObserver(playbackEndObserver)
@@ -98,10 +103,10 @@ final class PlayerViewModel: ObservableObject {
         playerItemStatusObservation = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
-        clearNowPlayingInfo()
-        setRemoteCommandsEnabled(false)
+        releaseSystemPlaybackControls()
 
         stopSecurityScopedAccess()
+        isPlaying = false
         hasVideo = false
         currentRecentVideoID = nil
         currentVideoTitle = nil
@@ -118,6 +123,7 @@ final class PlayerViewModel: ObservableObject {
             return false
         }
 
+        lastSavedPosition = nil
         currentRecentVideoID = recentVideoID
         currentVideoTitle = displayTitle ?? url.lastPathComponent
         currentPlaybackPosition = resumePosition
@@ -155,6 +161,7 @@ final class PlayerViewModel: ObservableObject {
         playerItemStatusObservation = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
+        isPlaying = false
         hasVideo = false
         isLoading = false
         showsLoadingIndicator = false
@@ -166,8 +173,7 @@ final class PlayerViewModel: ObservableObject {
         didFinishPlayback = false
         didUseExternalPlayback = false
         canSaveCurrentPosition = false
-        clearNowPlayingInfo()
-        setRemoteCommandsEnabled(false)
+        releaseSystemPlaybackControls()
         stopSecurityScopedAccess()
     }
 
@@ -182,13 +188,20 @@ final class PlayerViewModel: ObservableObject {
 
         if didFinishPlayback {
             currentPlaybackPosition = 0
-            recentStore?.updatePosition(for: id, position: 0)
+            savePositionIfChanged(0, for: id)
             return
         }
 
         guard seconds.isFinite else { return }
         currentPlaybackPosition = seconds
-        recentStore?.updatePosition(for: id, position: seconds)
+        savePositionIfChanged(seconds, for: id)
+    }
+
+    private func savePositionIfChanged(_ position: TimeInterval, for id: RecentVideo.ID) {
+        // Closing or backgrounding a paused window must not overwrite another window's progress.
+        guard position != lastSavedPosition else { return }
+        recentStore?.updatePosition(for: id, position: position)
+        lastSavedPosition = position
     }
 
     private func stopSecurityScopedAccess() {
@@ -251,9 +264,10 @@ final class PlayerViewModel: ObservableObject {
     private func startPlayback(item: AVPlayerItem, resumePosition: TimeInterval) {
         guard player.currentItem === item else { return }
 
+        configureAudioSession()
         hasVideo = true
         didFinishPlayback = false
-        setRemoteCommandsEnabled(true)
+        claimSystemPlaybackControls()
         addPeriodicTimeObserver()
         finishLoading()
 
@@ -280,12 +294,12 @@ final class PlayerViewModel: ObservableObject {
         removePeriodicTimeObserver()
         player.pause()
         player.replaceCurrentItem(with: nil)
+        isPlaying = false
         hasVideo = false
         currentPlaybackPosition = 0
         videoAspectRatio = nil
         canSaveCurrentPosition = false
-        clearNowPlayingInfo()
-        setRemoteCommandsEnabled(false)
+        releaseSystemPlaybackControls()
         showAlert(playbackFailureAlert)
     }
 
@@ -297,16 +311,31 @@ final class PlayerViewModel: ObservableObject {
         return .localPlaybackFailed
     }
 
-    private func configureRemoteCommands() {
+    private func releaseSystemPlaybackControls() {
+        ExternalDisplayPlaybackCoordinator.shared.update(player: player, isEnabled: false)
+        Self.playbackWindows.removeAll { $0.model == nil || $0.model === self }
+        guard !remoteCommandTargets.isEmpty else { return }
         removeRemoteCommandTargets()
+        clearNowPlayingInfo()
+        setRemoteCommandsEnabled(false)
+        Self.remoteCommandOwner = nil
+
+        let remaining = Self.playbackWindows.compactMap(\.model)
+        let successor = remaining.last { $0.player.timeControlStatus == .playing } ?? remaining.last
+        successor?.claimSystemPlaybackControls()
+        successor?.updateNowPlayingInfo()
+    }
+
+    private func claimSystemPlaybackControls() {
+        guard Self.remoteCommandOwner !== self else { return }
+        Self.playbackWindows.removeAll { $0.model == nil || $0.model === self }
+        Self.playbackWindows.append(PlaybackWindow(model: self))
+        Self.remoteCommandOwner?.removeRemoteCommandTargets()
+        Self.remoteCommandOwner = self
+        ExternalDisplayPlaybackCoordinator.shared.update(player: player, isEnabled: true)
 
         let commandCenter = MPRemoteCommandCenter.shared()
-        commandCenter.playCommand.isEnabled = true
-        commandCenter.pauseCommand.isEnabled = true
-        commandCenter.togglePlayPauseCommand.isEnabled = true
-        commandCenter.skipForwardCommand.isEnabled = true
         commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 10)]
-        commandCenter.skipBackwardCommand.isEnabled = true
         commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 10)]
 
         let playTarget = commandCenter.playCommand.addTarget { [weak self] _ in
@@ -365,7 +394,7 @@ final class PlayerViewModel: ObservableObject {
         }
         remoteCommandTargets.append(RemoteCommandTarget(command: commandCenter.skipBackwardCommand, target: skipBackwardTarget))
 
-        setRemoteCommandsEnabled(false)
+        setRemoteCommandsEnabled(true)
     }
 
     private func setRemoteCommandsEnabled(_ isEnabled: Bool) {
@@ -385,6 +414,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func updateNowPlayingInfo(elapsedTime overrideElapsedTime: TimeInterval? = nil, playbackRate overridePlaybackRate: Float? = nil) {
+        guard Self.remoteCommandOwner === self else { return }
         guard hasVideo || currentVideoTitle != nil else {
             clearNowPlayingInfo()
             return
@@ -484,7 +514,7 @@ final class PlayerViewModel: ObservableObject {
         guard let id = currentRecentVideoID else { return }
         didFinishPlayback = true
         currentPlaybackPosition = 0
-        recentStore?.updatePosition(for: id, position: 0)
+        savePositionIfChanged(0, for: id)
         updateNowPlayingInfo(elapsedTime: 0, playbackRate: 0)
     }
 
@@ -508,8 +538,7 @@ final class PlayerViewModel: ObservableObject {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            // Playback can still be attempted even if the session is not ready at launch.
-            // File-open errors are the only failures surfaced through the video alert.
+            // Let AVPlayer attempt playback if audio session activation is temporarily unavailable.
         }
     }
 
@@ -546,10 +575,10 @@ final class PlayerViewModel: ObservableObject {
             saveCurrentPosition()
             updateNowPlayingInfo(playbackRate: 0)
         case .ended:
-            configureAudioSession()
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
             if shouldResumeAfterAudioSessionInterruption, hasVideo, options.contains(.shouldResume) {
+                configureAudioSession()
                 didFinishPlayback = false
                 player.play()
             }
@@ -583,6 +612,8 @@ final class PlayerViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self, self.hasVideo else { return }
 
+                self.isPlaying = self.player.timeControlStatus == .playing
+                if self.isPlaying { self.claimSystemPlaybackControls() }
                 if self.player.timeControlStatus == .paused {
                     self.saveCurrentPosition()
                 }

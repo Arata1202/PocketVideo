@@ -27,37 +27,37 @@ final class RecentVideoStoreTests: XCTestCase {
         temporaryDirectory = nil
     }
 
-    func testAddOrUpdateReusesExistingItem() throws {
+    func testAddOrUpdateReusesExistingItem() async throws {
         let store = RecentVideoStore(userDefaults: userDefaults)
         let url = try makeVideoFile(named: "sample.mp4")
 
-        let first = try store.addOrUpdate(url: url, position: 42)
-        let updated = try store.addOrUpdate(url: url, position: 12)
+        let first = try await store.addOrUpdate(url: url, position: 42)
+        let updated = try await store.addOrUpdate(url: url, position: 12)
 
         XCTAssertEqual(store.videos.count, 1)
         XCTAssertEqual(first.id, updated.id)
         XCTAssertEqual(store.videos[0].lastPosition, 12, accuracy: 0.01)
     }
 
-    func testAddOrUpdatePreservesExistingPositionWhenPositionIsOmitted() throws {
+    func testAddOrUpdatePreservesExistingPositionWhenPositionIsOmitted() async throws {
         let store = RecentVideoStore(userDefaults: userDefaults)
         let url = try makeVideoFile(named: "sample.mp4")
 
-        let first = try store.addOrUpdate(url: url, position: 42)
-        let updated = try store.addOrUpdate(url: url)
+        let first = try await store.addOrUpdate(url: url, position: 42)
+        let updated = try await store.addOrUpdate(url: url)
 
         XCTAssertEqual(store.videos.count, 1)
         XCTAssertEqual(first.id, updated.id)
         XCTAssertEqual(store.videos[0].lastPosition, 42, accuracy: 0.01)
     }
 
-    func testAddOrUpdateReusesExistingItemForSameContentAtDifferentPath() throws {
+    func testAddOrUpdateReusesExistingItemForSameContentAtDifferentPath() async throws {
         let store = RecentVideoStore(userDefaults: userDefaults)
         let firstURL = try makeVideoFile(named: "sample.mp4", contents: "same video content")
         let secondURL = try makeVideoFile(named: "renamed.mp4", contents: "same video content")
 
-        let first = try store.addOrUpdate(url: firstURL, position: 42)
-        let updated = try store.addOrUpdate(url: secondURL, position: 12)
+        let first = try await store.addOrUpdate(url: firstURL, position: 42)
+        let updated = try await store.addOrUpdate(url: secondURL, position: 12)
 
         XCTAssertEqual(store.videos.count, 1)
         XCTAssertEqual(first.id, updated.id)
@@ -65,13 +65,13 @@ final class RecentVideoStoreTests: XCTestCase {
         XCTAssertEqual(store.videos[0].lastPosition, 12, accuracy: 0.01)
     }
 
-    func testAddOrUpdatePreservesExistingPositionForSameContentAtDifferentPathWhenPositionIsOmitted() throws {
+    func testAddOrUpdatePreservesExistingPositionForSameContentAtDifferentPathWhenPositionIsOmitted() async throws {
         let store = RecentVideoStore(userDefaults: userDefaults)
         let firstURL = try makeVideoFile(named: "sample.mp4", contents: "same video content")
         let secondURL = try makeVideoFile(named: "renamed.mp4", contents: "same video content")
 
-        let first = try store.addOrUpdate(url: firstURL, position: 42)
-        let updated = try store.addOrUpdate(url: secondURL)
+        let first = try await store.addOrUpdate(url: firstURL, position: 42)
+        let updated = try await store.addOrUpdate(url: secondURL)
 
         XCTAssertEqual(store.videos.count, 1)
         XCTAssertEqual(first.id, updated.id)
@@ -79,19 +79,135 @@ final class RecentVideoStoreTests: XCTestCase {
         XCTAssertEqual(store.videos[0].lastPosition, 42, accuracy: 0.01)
     }
 
-    func testKeepsMostRecentItemsWithinLimit() throws {
+    func testDifferentMiddleContentKeepsSeparateHistoryAndPositions() async throws {
+        let firstURL = temporaryDirectory.appendingPathComponent("first.mov")
+        let secondURL = temporaryDirectory.appendingPathComponent("second.mov")
+        var bytes = Data(repeating: 0, count: 192 * 1024)
+        try bytes.write(to: firstURL)
+        bytes[96 * 1024] = 1
+        try bytes.write(to: secondURL)
+
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let first = try await store.addOrUpdate(url: firstURL, position: 12)
+        let second = try await store.addOrUpdate(url: secondURL)
+
+        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertEqual(second.lastPosition, 0)
+        let reloaded = RecentVideoStore(userDefaults: userDefaults)
+        XCTAssertEqual(reloaded.videos.map(\.lastPosition), [0, 12])
+    }
+
+    func testOverwritingFileReplacesItsHistoryAndResetsPosition() async throws {
+        let url = try makeVideoFile(named: "edited.mp4", contents: "first cut")
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let original = try await store.addOrUpdate(url: url, position: 20)
+        try Data("new cut".utf8).write(to: url)
+        let replacement = try await store.addOrUpdate(url: url)
+        XCTAssertNotEqual(original.id, replacement.id)
+        XCTAssertEqual(store.videos, [replacement])
+        XCTAssertEqual(replacement.lastPosition, 0)
+    }
+
+    func testOnlyChangingModificationDatePreservesPositionAfterRelaunch() async throws {
+        let url = try makeVideoFile(named: "touched.mov")
+        let first = try await RecentVideoStore(userDefaults: userDefaults).addOrUpdate(url: url, position: 5)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: url.path)
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let reopened = try await store.addOrUpdate(url: url)
+        XCTAssertEqual(reopened.id, first.id)
+        XCTAssertEqual(reopened.lastPosition, 5)
+    }
+
+    func testChangingOnlyMiddleFramesAtSamePathResetsPosition() async throws {
+        let url = temporaryDirectory.appendingPathComponent("edited.mov")
+        var bytes = Data(repeating: 0, count: 192 * 1024)
+        try bytes.write(to: url)
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let first = try await store.addOrUpdate(url: url, position: 5)
+        bytes[96 * 1024] = 1
+        try bytes.write(to: url)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: url.path)
+        let reopened = try await store.addOrUpdate(url: url)
+        XCTAssertNotEqual(reopened.id, first.id)
+        XCTAssertEqual(reopened.lastPosition, 0)
+        XCTAssertEqual(store.videos, [reopened])
+    }
+
+    func testClearWinsOverEarlierOpenAndAllowsLaterOpen() async throws {
+        let url = try makeVideoFile(named: "download.mov")
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        _ = try await store.addOrUpdate(url: url, position: 5)
+        let earlierOpen = store.beginOpening()
+        store.removeAll()
+        let playback = try await store.addOrUpdate(url: url, request: earlierOpen)
+        store.updatePosition(for: playback.id, position: 2)
+        XCTAssertTrue(store.videos.isEmpty)
+        XCTAssertTrue(RecentVideoStore(userDefaults: userDefaults).videos.isEmpty)
+        let laterOpen = try await store.addOrUpdate(url: url)
+        XCTAssertEqual(store.videos, [laterOpen])
+        XCTAssertEqual(laterOpen.lastPosition, 0)
+    }
+
+    func testRenamedFileReopensWithFreshBookmarkAndSavedPosition() async throws {
+        let oldURL = try makeVideoFile(named: "before.mp4")
+        let newURL = temporaryDirectory.appendingPathComponent("after.mp4")
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let original = try await store.addOrUpdate(url: oldURL, position: 5)
+        try FileManager.default.moveItem(at: oldURL, to: newURL)
+        let renamed = try await store.addOrUpdate(url: store.resolveURL(for: original))
+        XCTAssertEqual(renamed.id, original.id)
+        let reloaded = RecentVideoStore(userDefaults: userDefaults)
+        let saved = try XCTUnwrap(reloaded.videos.first)
+        XCTAssertEqual(saved.title, "after.mp4")
+        XCTAssertEqual(saved.lastPosition, 5)
+        var stale = false
+        let resolved = try URL(resolvingBookmarkData: saved.bookmarkData, bookmarkDataIsStale: &stale)
+        XCTAssertEqual(resolved.lastPathComponent, newURL.lastPathComponent)
+        XCTAssertFalse(stale)
+    }
+
+    func testIndividualDeletionOnlySuppressesEarlierOpensOfThatVideo() async throws {
+        let url = try makeVideoFile(named: "movie.mp4", contents: "movie")
+        let copy = try makeVideoFile(named: "copy.mp4", contents: "movie")
+        let other = try makeVideoFile(named: "other.mp4", contents: "other")
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let row = try await store.addOrUpdate(url: url, position: 5)
+        let earlierOpen = store.beginOpening()
+        let earlierCopy = store.beginOpening()
+        let earlierOther = store.beginOpening()
+        store.remove(row)
+        let unrelated = try await store.addOrUpdate(url: other, request: earlierOther)
+        let explicitlyReopened = try await store.addOrUpdate(url: url, position: 2)
+        let late = try await store.addOrUpdate(url: url, request: earlierOpen)
+        store.updatePosition(for: late.id, position: 8)
+        _ = try await store.addOrUpdate(url: copy, request: earlierCopy)
+        XCTAssertEqual(store.videos, [explicitlyReopened, unrelated])
+        XCTAssertEqual(store.videos.first?.lastPosition, 2)
+    }
+
+    func testConcurrentOpensShareOneHistoryEntry() async throws {
+        let url = try makeVideoFile(named: "shared.mov")
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        async let fromFirstWindow = store.addOrUpdate(url: url)
+        async let fromSecondWindow = store.addOrUpdate(url: url)
+        let (first, second) = try await (fromFirstWindow, fromSecondWindow)
+        XCTAssertEqual(first.id, second.id)
+        XCTAssertEqual(store.videos.count, 1)
+    }
+
+    func testKeepsMostRecentItemsWithinLimit() async throws {
         let store = RecentVideoStore(userDefaults: userDefaults, maxItems: 2)
 
-        _ = try store.addOrUpdate(url: makeVideoFile(named: "first.mp4", contents: "first video content"))
-        _ = try store.addOrUpdate(url: makeVideoFile(named: "second.mp4", contents: "second video content"))
-        _ = try store.addOrUpdate(url: makeVideoFile(named: "third.mp4", contents: "third video content"))
+        _ = try await store.addOrUpdate(url: makeVideoFile(named: "first.mp4", contents: "first video content"))
+        _ = try await store.addOrUpdate(url: makeVideoFile(named: "second.mp4", contents: "second video content"))
+        _ = try await store.addOrUpdate(url: makeVideoFile(named: "third.mp4", contents: "third video content"))
 
         XCTAssertEqual(store.videos.map(\.title), ["third.mp4", "second.mp4"])
     }
 
-    func testUpdatePositionPersistsAcrossStoreInstances() throws {
+    func testUpdatePositionPersistsAcrossStoreInstances() async throws {
         let store = RecentVideoStore(userDefaults: userDefaults)
-        let video = try store.addOrUpdate(url: makeVideoFile(named: "persisted.mp4"))
+        let video = try await store.addOrUpdate(url: makeVideoFile(named: "persisted.mp4"))
 
         store.updatePosition(for: video.id, position: 125)
 
@@ -100,9 +216,9 @@ final class RecentVideoStoreTests: XCTestCase {
         XCTAssertEqual(reloadedStore.videos.first?.lastPosition ?? 0, 125, accuracy: 0.01)
     }
 
-    func testRemoveAllPersistsEmptyState() throws {
+    func testRemoveAllPersistsEmptyState() async throws {
         let store = RecentVideoStore(userDefaults: userDefaults)
-        _ = try store.addOrUpdate(url: makeVideoFile(named: "sample.mp4"))
+        _ = try await store.addOrUpdate(url: makeVideoFile(named: "sample.mp4"))
 
         store.removeAll()
 
@@ -110,7 +226,7 @@ final class RecentVideoStoreTests: XCTestCase {
         XCTAssertTrue(reloadedStore.videos.isEmpty)
     }
 
-    func testLoadDeduplicatesLegacyVideosWithSameContent() throws {
+    func testLoadDeduplicatesLegacyVideosWithSameContent() async throws {
         let firstURL = try makeVideoFile(named: "first.mp4", contents: "same legacy video")
         let duplicateURL = try makeVideoFile(named: "duplicate.mp4", contents: "same legacy video")
         let videos = [
@@ -132,6 +248,7 @@ final class RecentVideoStoreTests: XCTestCase {
 
         let store = RecentVideoStore(userDefaults: userDefaults)
 
+        await store.finishMigration()
         XCTAssertEqual(store.videos.count, 1)
         XCTAssertEqual(store.videos[0].title, "first.mp4")
         XCTAssertNotNil(store.videos[0].contentFingerprint)

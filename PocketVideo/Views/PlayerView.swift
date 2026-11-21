@@ -47,27 +47,18 @@ struct PlayerView: UIViewControllerRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, @MainActor AVPlayerViewControllerDelegate {
-        private var shouldResumeAfterFullScreen = false
-
-        func playerViewController(
-            _ playerViewController: AVPlayerViewController,
-            willBeginFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
-        ) {
-            shouldResumeAfterFullScreen = playerViewController.player.map(Self.isPlaybackIntended) ?? false
-        }
-
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
             willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
         ) {
             let player = playerViewController.player
-            let shouldResume = shouldResumeAfterFullScreen
-            shouldResumeAfterFullScreen = false
+            let shouldResume = player.map(Self.isPlaybackIntended) ?? false
+            let item = player?.currentItem
 
             coordinator.animate(alongsideTransition: nil) { [weak player] context in
                 guard !context.isCancelled, shouldResume else { return }
                 DispatchQueue.main.async {
-                    if player?.currentItem != nil {
+                    if let item, player?.currentItem === item {
                         player?.play()
                     }
                 }
