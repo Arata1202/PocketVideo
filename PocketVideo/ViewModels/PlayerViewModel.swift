@@ -4,6 +4,20 @@ import CoreGraphics
 import Foundation
 import MediaPlayer
 
+private actor PlaybackAudioSession {
+    static let shared = PlaybackAudioSession()
+
+    func activate() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
+            try session.setActive(true)
+        } catch {
+            // Let AVPlayer attempt playback if audio session activation is temporarily unavailable.
+        }
+    }
+}
+
 @MainActor
 final class PlayerViewModel: ObservableObject {
     @Published var player = AVPlayer()
@@ -47,7 +61,8 @@ final class PlayerViewModel: ObservableObject {
     private var openRequestID = UUID()
     private var lastSavedPosition: TimeInterval?
     private var canSaveCurrentPosition = false
-    private var shouldResumeAfterAudioSessionInterruption = false
+    private weak var interruptedItem: AVPlayerItem?
+    private var interruptionResumeTask: Task<Void, Never>?
 
     init() {
         player.allowsExternalPlayback = true
@@ -251,7 +266,7 @@ final class PlayerViewModel: ObservableObject {
                 case .readyToPlay:
                     guard !didStartPlayback else { return }
                     didStartPlayback = true
-                    self.startPlayback(item: item, resumePosition: resumePosition)
+                    await self.startPlayback(item: item, resumePosition: resumePosition)
                 case .failed:
                     self.handlePlayerItemFailure()
                 default:
@@ -261,10 +276,10 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func startPlayback(item: AVPlayerItem, resumePosition: TimeInterval) {
+    private func startPlayback(item: AVPlayerItem, resumePosition: TimeInterval) async {
+        await PlaybackAudioSession.shared.activate()
         guard player.currentItem === item else { return }
 
-        configureAudioSession()
         hasVideo = true
         didFinishPlayback = false
         claimSystemPlaybackControls()
@@ -541,15 +556,6 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func configureAudioSession() {
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            // Let AVPlayer attempt playback if audio session activation is temporarily unavailable.
-        }
-    }
-
     private func observeAudioSession() {
         audioSessionInterruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
@@ -578,19 +584,25 @@ final class PlayerViewModel: ObservableObject {
 
         switch type {
         case .began:
-            shouldResumeAfterAudioSessionInterruption = hasVideo && player.timeControlStatus == .playing
+            interruptionResumeTask?.cancel()
+            interruptedItem = hasVideo && player.timeControlStatus == .playing ? player.currentItem : nil
             player.pause()
             saveCurrentPosition()
             updateNowPlayingInfo(playbackRate: 0)
         case .ended:
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            if shouldResumeAfterAudioSessionInterruption, hasVideo, options.contains(.shouldResume) {
-                configureAudioSession()
-                didFinishPlayback = false
-                player.play()
+            let item = interruptedItem
+            interruptedItem = nil
+            if let item, player.currentItem === item, options.contains(.shouldResume) {
+                interruptionResumeTask = Task { [weak self] in
+                    await PlaybackAudioSession.shared.activate()
+                    guard !Task.isCancelled, let self, self.player.currentItem === item else { return }
+                    self.didFinishPlayback = false
+                    self.player.play()
+                    self.updateNowPlayingInfo()
+                }
             }
-            shouldResumeAfterAudioSessionInterruption = false
             updateNowPlayingInfo()
         @unknown default:
             break
