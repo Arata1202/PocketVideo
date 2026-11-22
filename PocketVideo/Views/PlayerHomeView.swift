@@ -57,6 +57,7 @@ struct PlayerHomeView: View {
             allowsMultipleSelection: false,
             onCompletion: handleFileImport
         )
+        .accessibilityHidden(isPreparingFile)
         .overlay {
             if isPreparingFile {
                 filePreparationOverlay
@@ -130,6 +131,8 @@ struct PlayerHomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .padding()
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
     }
 
     private var homeContent: some View {
