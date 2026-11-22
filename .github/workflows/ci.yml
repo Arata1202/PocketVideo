@@ -26,10 +26,8 @@ jobs:
         run: xcodegen generate
       - name: Build and test
         run: |
-          DEVICE_ID=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid // empty')
-          test -n "$DEVICE_ID"
           xcodebuild test \
             -project PocketVideo.xcodeproj \
             -scheme PocketVideo \
-            -destination "platform=iOS Simulator,id=$DEVICE_ID" \
+            -destination "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.5" \
             CODE_SIGNING_ALLOWED=NO
