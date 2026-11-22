@@ -16,7 +16,8 @@ struct PlayerHomeView: View {
     @State private var isSettingsPresented = false
     @State private var hasAppeared = false
     private struct OpenRequest {
-        let url: URL
+        var url: URL
+        let audioStateAtSelection: PlayerViewModel.AudioInterruptionState
         let historyRequest: RecentVideoStore.PendingOpen
     }
     @State private var pendingOpen: OpenRequest?
@@ -288,7 +289,9 @@ struct PlayerHomeView: View {
     }
 
     private func queueOpenURL(_ url: URL) {
-        pendingOpen = OpenRequest(url: url, historyRequest: recentStore.beginOpening())
+        cancelFilePreparation()
+        pendingOpen = OpenRequest(url: url, audioStateAtSelection: viewModel.audioInterruptionState,
+                                  historyRequest: recentStore.beginOpening())
         openPendingURLIfReady()
     }
 
@@ -300,7 +303,6 @@ struct PlayerHomeView: View {
 
     private func prepareAndOpen(_ request: OpenRequest) {
         let url = request.url
-        cancelFilePreparation()
 
         if isFileReadyToOpen(url) {
             filePreparationTask = Task { await openSelected(request) }
@@ -325,7 +327,8 @@ struct PlayerHomeView: View {
             do {
                 let preparedURL = try await prepareFileForPlayback(url, preparationID: preparationID)
                 guard !Task.isCancelled, filePreparationID == preparationID else { return }
-                let prepared = OpenRequest(url: preparedURL, historyRequest: request.historyRequest)
+                var prepared = request
+                prepared.url = preparedURL
                 if scenePhase == .active {
                     await openSelected(prepared)
                 } else {
@@ -341,6 +344,7 @@ struct PlayerHomeView: View {
     }
 
     private func cancelFilePreparation() {
+        pendingOpen = nil
         filePreparationID = UUID()
         filePreparationTask?.cancel()
         filePreparationTask = nil
@@ -408,7 +412,8 @@ struct PlayerHomeView: View {
                 url: storedURL,
                 resumePosition: recent.lastPosition,
                 recentVideoID: recent.id,
-                displayTitle: recent.title
+                displayTitle: recent.title,
+                audioStateAtSelection: request.audioStateAtSelection
             ) else {
                 return
             }
@@ -416,6 +421,7 @@ struct PlayerHomeView: View {
         } catch is CancellationError {
             return
         } catch {
+            guard !Task.isCancelled else { return }
             viewModel.showAlert(.fileOpenFailed)
         }
     }

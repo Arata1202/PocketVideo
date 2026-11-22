@@ -77,6 +77,123 @@ final class PlaybackWindowTests: XCTestCase {
         XCTAssertEqual(model.player.timeControlStatus, .paused)
     }
 
+    func testInterruptionDuringPreparationDefersAutoplayUntilAllowed() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        let session = AVAudioSession.sharedInstance()
+        let center = NotificationCenter.default
+        for (position, allowResume) in [(0.0, true), (3.0, true), (3.0, false)] {
+            XCTAssertTrue(model.open(url: url, resumePosition: position))
+            center.post(name: AVAudioSession.interruptionNotification, object: session,
+                        userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+            for _ in 0..<80 {
+                if model.hasVideo && model.player.currentTime().seconds >= position { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            XCTAssertTrue(model.hasVideo)
+            XCTAssertGreaterThanOrEqual(model.player.currentTime().seconds, position)
+            XCTAssertEqual(model.player.timeControlStatus, .paused)
+            center.post(name: AVAudioSession.interruptionNotification, object: session, userInfo: [
+                AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+                AVAudioSessionInterruptionOptionKey: allowResume ? AVAudioSession.InterruptionOptions.shouldResume.rawValue : 0
+            ])
+            if allowResume {
+                for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+                XCTAssertTrue(model.isPlaying)
+            } else {
+                try await Task.sleep(for: .milliseconds(350))
+                XCTAssertEqual(model.player.timeControlStatus, .paused)
+            }
+        }
+    }
+
+    func testExplicitSelectionCanRecoverWithoutInterruptionEnd() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        func beginInterruption() {
+            NotificationCenter.default.post(name: AVAudioSession.interruptionNotification,
+                object: AVAudioSession.sharedInstance(),
+                userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        }
+        beginInterruption()
+        let earlierSelection = model.audioInterruptionState
+        beginInterruption()
+        XCTAssertTrue(model.open(url: url, audioStateAtSelection: earlierSelection))
+        for _ in 0..<80 where !model.hasVideo { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(model.hasVideo)
+        XCTAssertEqual(model.player.timeControlStatus, .paused)
+
+        let newSelection = model.audioInterruptionState
+        XCTAssertTrue(model.open(url: url, audioStateAtSelection: newSelection))
+        for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(model.isPlaying)
+        XCTAssertNil(model.audioInterruptionState.currentID)
+    }
+
+    func testDelayedOpenHonorsInterruptionEndUntilUserSelectsAgain() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        let session = AVAudioSession.sharedInstance()
+        let center = NotificationCenter.default
+        for allowResume in [false, true] {
+            let selection = model.audioInterruptionState
+            center.post(name: AVAudioSession.interruptionNotification, object: session,
+                        userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+            center.post(name: AVAudioSession.interruptionNotification, object: session, userInfo: [
+                AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+                AVAudioSessionInterruptionOptionKey: allowResume ? AVAudioSession.InterruptionOptions.shouldResume.rawValue : 0
+            ])
+            XCTAssertTrue(model.open(url: url, audioStateAtSelection: selection))
+            if !allowResume {
+                for _ in 0..<80 where !model.hasVideo { try await Task.sleep(for: .milliseconds(100)) }
+                XCTAssertTrue(model.hasVideo)
+                try await Task.sleep(for: .milliseconds(350))
+                XCTAssertEqual(model.player.timeControlStatus, .paused)
+                XCTAssertTrue(model.open(url: url, audioStateAtSelection: model.audioInterruptionState))
+            }
+            for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+            XCTAssertTrue(model.isPlaying)
+            model.closeCurrentVideo()
+        }
+    }
+
+    func testDelayedOpenAfterOutputDisconnectWaitsForNewSelection() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        let selection = model.audioInterruptionState
+        NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: AVAudioSession.sharedInstance(),
+            userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue])
+        XCTAssertTrue(model.open(url: url, audioStateAtSelection: selection))
+        for _ in 0..<80 where !model.hasVideo { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(model.hasVideo)
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(model.player.timeControlStatus, .paused)
+
+        XCTAssertTrue(model.open(url: url, audioStateAtSelection: model.audioInterruptionState))
+        for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(model.isPlaying)
+    }
+
     private func verifyPlaybackRouting(closeSelectedFirst: Bool) async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let existingWindows = Set(scene.windows.map(ObjectIdentifier.init))

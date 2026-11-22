@@ -7,13 +7,14 @@ import MediaPlayer
 private actor PlaybackAudioSession {
     static let shared = PlaybackAudioSession()
 
-    func activate() {
+    func activate() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
             try session.setActive(true)
+            return true
         } catch {
-            // Let AVPlayer attempt playback if audio session activation is temporarily unavailable.
+            return false
         }
     }
 }
@@ -61,8 +62,16 @@ final class PlayerViewModel: ObservableObject {
     private var openRequestID = UUID()
     private var lastSavedPosition: TimeInterval?
     private var canSaveCurrentPosition = false
-    private weak var interruptedItem: AVPlayerItem?
-    private var interruptionResumeTask: Task<Void, Never>?
+    struct AudioInterruptionState {
+        fileprivate(set) var currentID: UUID?
+        // A selection made before a stop event must stay paused after file preparation.
+        fileprivate var autoplayCancellationID: UUID?
+    }
+
+    private(set) var audioInterruptionState = AudioInterruptionState()
+    private var interruptionAtSelection: UUID?
+    private var wantsAutomaticPlayback = false
+    private var automaticPlaybackTask: Task<Void, Never>?
 
     init() {
         player.allowsExternalPlayback = true
@@ -105,8 +114,10 @@ final class PlayerViewModel: ObservableObject {
     }
 
     @discardableResult
-    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil) -> Bool {
+    func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil,
+              audioStateAtSelection: AudioInterruptionState? = nil) -> Bool {
         let requestID = UUID()
+        cancelAutomaticPlayback()
         openRequestID = requestID
         saveCurrentPosition()
         isLoading = true
@@ -147,6 +158,9 @@ final class PlayerViewModel: ObservableObject {
         didUseExternalPlayback = false
         canSaveCurrentPosition = false
 
+        let selection = audioStateAtSelection ?? audioInterruptionState
+        interruptionAtSelection = selection.currentID
+        wantsAutomaticPlayback = selection.autoplayCancellationID == audioInterruptionState.autoplayCancellationID
         let asset = AVURLAsset(url: url)
         aspectRatioLoadTask = Task { [weak self] in
             let aspectRatio = await Self.videoAspectRatio(from: asset) ?? (16.0 / 9.0)
@@ -167,6 +181,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func closeCurrentVideo() {
+        cancelAutomaticPlayback()
         openRequestID = UUID()
         saveCurrentPosition()
         aspectRatioLoadTask?.cancel()
@@ -266,7 +281,7 @@ final class PlayerViewModel: ObservableObject {
                 case .readyToPlay:
                     guard !didStartPlayback else { return }
                     didStartPlayback = true
-                    await self.startPlayback(item: item, resumePosition: resumePosition)
+                    self.preparePlayback(item: item, resumePosition: resumePosition)
                 case .failed:
                     self.handlePlayerItemFailure()
                 default:
@@ -276,8 +291,7 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func startPlayback(item: AVPlayerItem, resumePosition: TimeInterval) async {
-        await PlaybackAudioSession.shared.activate()
+    private func preparePlayback(item: AVPlayerItem, resumePosition: TimeInterval) {
         guard player.currentItem === item else { return }
 
         hasVideo = true
@@ -294,18 +308,17 @@ final class PlayerViewModel: ObservableObject {
                     self.canSaveCurrentPosition = true
                     let seconds = self.player.currentTime().seconds
                     self.currentPlaybackPosition = seconds.isFinite ? seconds : resumePosition
-                    self.player.play()
-                    self.updateNowPlayingInfo()
+                    self.startAutomaticPlaybackIfReady()
                 }
             }
         } else {
             canSaveCurrentPosition = true
-            player.play()
-            updateNowPlayingInfo()
+            startAutomaticPlaybackIfReady()
         }
     }
 
     private func handlePlayerItemFailure() {
+        cancelAutomaticPlayback()
         removePeriodicTimeObserver()
         player.pause()
         player.replaceCurrentItem(with: nil)
@@ -373,7 +386,7 @@ final class PlayerViewModel: ObservableObject {
 
         let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                self?.cancelInterruptionResume()
+                self?.cancelAutomaticPlayback()
                 self?.player.pause()
                 self?.saveCurrentPosition()
                 self?.updateNowPlayingInfo()
@@ -389,7 +402,7 @@ final class PlayerViewModel: ObservableObject {
                     self.didFinishPlayback = false
                     self.player.play()
                 } else {
-                    self.cancelInterruptionResume()
+                    self.cancelAutomaticPlayback()
                     self.player.pause()
                     self.saveCurrentPosition()
                 }
@@ -558,10 +571,30 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func cancelInterruptionResume() {
-        interruptedItem = nil
-        interruptionResumeTask?.cancel()
-        interruptionResumeTask = nil
+    private func startAutomaticPlaybackIfReady() {
+        guard wantsAutomaticPlayback, canSaveCurrentPosition,
+              audioInterruptionState.currentID == nil || audioInterruptionState.currentID == interruptionAtSelection,
+              automaticPlaybackTask == nil, let item = player.currentItem else { return }
+        automaticPlaybackTask = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+            let activated = await PlaybackAudioSession.shared.activate()
+            guard !Task.isCancelled, let self, self.player.currentItem === item else { return }
+            self.automaticPlaybackTask = nil
+            if self.audioInterruptionState.currentID != nil {
+                guard activated else { return }
+                self.audioInterruptionState.currentID = nil
+            }
+            self.wantsAutomaticPlayback = false
+            self.didFinishPlayback = false
+            self.player.play()
+            self.updateNowPlayingInfo()
+        }
+    }
+
+    private func cancelAutomaticPlayback() {
+        wantsAutomaticPlayback = false
+        automaticPlaybackTask?.cancel()
+        automaticPlaybackTask = nil
     }
 
     private func observeAudioSession() {
@@ -570,7 +603,7 @@ final class PlayerViewModel: ObservableObject {
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 self?.handleAudioSessionInterruption(notification)
             }
         }
@@ -580,7 +613,7 @@ final class PlayerViewModel: ObservableObject {
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 self?.handleAudioSessionRouteChange(notification)
             }
         }
@@ -592,24 +625,23 @@ final class PlayerViewModel: ObservableObject {
 
         switch type {
         case .began:
-            interruptionResumeTask?.cancel()
-            interruptedItem = hasVideo && player.timeControlStatus == .playing ? player.currentItem : nil
+            audioInterruptionState.currentID = UUID()
+            wantsAutomaticPlayback = wantsAutomaticPlayback || player.timeControlStatus == .playing
+            automaticPlaybackTask?.cancel()
+            automaticPlaybackTask = nil
             player.pause()
             saveCurrentPosition()
             updateNowPlayingInfo(playbackRate: 0)
         case .ended:
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            let item = interruptedItem
-            interruptedItem = nil
-            if let item, player.currentItem === item, options.contains(.shouldResume) {
-                interruptionResumeTask = Task { [weak self] in
-                    await PlaybackAudioSession.shared.activate()
-                    guard !Task.isCancelled, let self, self.player.currentItem === item else { return }
-                    self.didFinishPlayback = false
-                    self.player.play()
-                    self.updateNowPlayingInfo()
-                }
+            guard audioInterruptionState.currentID != nil else { return }
+            audioInterruptionState.currentID = nil
+            if options.contains(.shouldResume) {
+                startAutomaticPlaybackIfReady()
+            } else {
+                audioInterruptionState.autoplayCancellationID = UUID()
+                cancelAutomaticPlayback()
             }
             updateNowPlayingInfo()
         @unknown default:
@@ -618,13 +650,13 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func handleAudioSessionRouteChange(_ notification: Notification) {
-        guard hasVideo,
-              let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+        guard let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
 
         switch reason {
         case .oldDeviceUnavailable:
-            cancelInterruptionResume()
+            audioInterruptionState.autoplayCancellationID = UUID()
+            cancelAutomaticPlayback()
             player.pause()
             saveCurrentPosition()
             updateNowPlayingInfo(playbackRate: 0)
