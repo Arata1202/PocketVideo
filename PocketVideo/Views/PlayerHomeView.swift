@@ -189,7 +189,7 @@ struct PlayerHomeView: View {
         let aspectRatio = min(max(viewModel.videoAspectRatio ?? (16.0 / 9.0), 0.45), 2.4)
         let fullWidth = geometry.size.width
         let naturalHeight = fullWidth / aspectRatio
-        let height = max(naturalHeight, 180)
+        let height = min(max(naturalHeight, 180), geometry.size.height)
 
         return playerSurface
             .frame(width: fullWidth, height: height)
