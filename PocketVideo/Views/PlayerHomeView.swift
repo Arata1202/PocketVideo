@@ -116,7 +116,7 @@ struct PlayerHomeView: View {
                     }
                 } else {
                     ProgressView()
-                        .accessibilityLabel("ダウンロードの進捗")
+                        .accessibilityHidden(true)
                 }
 
                 Button("キャンセル") {
