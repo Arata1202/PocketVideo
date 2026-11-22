@@ -47,7 +47,7 @@
 "ファイルアプリでダウンロード状況を確認してから、もう一度試してください。" = "Check the download status in the Files app, then try again.";
 "ファイルアプリで端末内にダウンロードしてから、もう一度試してください。" = "Download the file to this device in the Files app, then try again.";
 "動画を利用できません" = "Video Unavailable";
-"履歴から削除しました。もう一度ファイルアプリから選択してください。" = "It has been removed from Recent Videos. Select it again from the Files app.";
+"ファイルアプリで動画にアクセスできることを確認してから、もう一度試してください。" = "Check that the video is accessible in the Files app, then try again.";
 "AirPlayで再生できませんでした" = "Couldn’t Play via AirPlay";
 "接続先の機器または動画のコーデックが、AirPlayの直接再生に対応していない可能性があります。画面ミラーリングで再生できる場合があります。" = "The connected device or video codec may not support direct AirPlay playback. Screen Mirroring may work instead.";
 "動画を再生できませんでした" = "Couldn’t Play Video";

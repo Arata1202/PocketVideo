@@ -410,7 +410,6 @@ struct PlayerHomeView: View {
                 recentVideoID: recent.id,
                 displayTitle: recent.title
             ) else {
-                recentStore.remove(recent)
                 return
             }
             isPlayerPresented = true
@@ -451,7 +450,6 @@ struct PlayerHomeView: View {
             let url = try recentStore.resolveURL(for: video)
             queueOpenURL(url)
         } catch {
-            recentStore.remove(video)
             viewModel.showAlert(.recentVideoUnavailable)
         }
     }

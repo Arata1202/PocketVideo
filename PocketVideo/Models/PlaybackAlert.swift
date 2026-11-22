@@ -36,7 +36,7 @@ struct PlaybackAlert: Identifiable {
     static var recentVideoUnavailable: PlaybackAlert {
         PlaybackAlert(
             title: String(localized: "動画を利用できません"),
-            message: String(localized: "履歴から削除しました。もう一度ファイルアプリから選択してください。")
+            message: String(localized: "ファイルアプリで動画にアクセスできることを確認してから、もう一度試してください。")
         )
     }
 
