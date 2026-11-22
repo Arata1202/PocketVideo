@@ -63,8 +63,12 @@ final class PlaybackWindowTests: XCTestCase {
         output.connect(windowScene: scene)
 
         func currentLayer() throws -> AVPlayerLayer {
-            let window = try XCTUnwrap(scene.windows.first { !$0.isHidden && !existingWindows.contains(ObjectIdentifier($0)) })
-            return try XCTUnwrap(window.rootViewController?.view.layer as? AVPlayerLayer)
+            let outputLayers = scene.windows.compactMap { window -> AVPlayerLayer? in
+                guard !window.isHidden, !existingWindows.contains(ObjectIdentifier(window)) else { return nil }
+                return window.rootViewController?.viewIfLoaded?.layer as? AVPlayerLayer
+            }
+            XCTAssertEqual(outputLayers.count, 1)
+            return try XCTUnwrap(outputLayers.first)
         }
         func checkOwner(_ model: PlayerViewModel, title: String) throws {
             XCTAssertTrue(try currentLayer().player === model.player)
