@@ -373,6 +373,7 @@ final class PlayerViewModel: ObservableObject {
 
         let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
+                self?.cancelInterruptionResume()
                 self?.player.pause()
                 self?.saveCurrentPosition()
                 self?.updateNowPlayingInfo()
@@ -388,6 +389,7 @@ final class PlayerViewModel: ObservableObject {
                     self.didFinishPlayback = false
                     self.player.play()
                 } else {
+                    self.cancelInterruptionResume()
                     self.player.pause()
                     self.saveCurrentPosition()
                 }
@@ -556,6 +558,12 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    private func cancelInterruptionResume() {
+        interruptedItem = nil
+        interruptionResumeTask?.cancel()
+        interruptionResumeTask = nil
+    }
+
     private func observeAudioSession() {
         audioSessionInterruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
@@ -616,6 +624,7 @@ final class PlayerViewModel: ObservableObject {
 
         switch reason {
         case .oldDeviceUnavailable:
+            cancelInterruptionResume()
             player.pause()
             saveCurrentPosition()
             updateNowPlayingInfo(playbackRate: 0)

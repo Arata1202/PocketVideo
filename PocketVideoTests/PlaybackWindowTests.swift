@@ -46,6 +46,37 @@ final class PlaybackWindowTests: XCTestCase {
         try await verifyPlaybackRouting(closeSelectedFirst: false)
     }
 
+    func testInterruptionResumesUnlessAudioOutputWasDisconnected() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        XCTAssertTrue(model.open(url: url))
+        let session = AVAudioSession.sharedInstance()
+        let center = NotificationCenter.default
+        for disconnectOutput in [false, true] {
+            for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+            XCTAssertTrue(model.isPlaying)
+            center.post(name: AVAudioSession.interruptionNotification, object: session,
+                        userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+            for _ in 0..<80 where model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+            XCTAssertFalse(model.isPlaying)
+            if disconnectOutput {
+                center.post(name: AVAudioSession.routeChangeNotification, object: session,
+                            userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue])
+            }
+            center.post(name: AVAudioSession.interruptionNotification, object: session, userInfo: [
+                AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
+                AVAudioSessionInterruptionOptionKey: AVAudioSession.InterruptionOptions.shouldResume.rawValue
+            ])
+        }
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(model.player.timeControlStatus, .paused)
+    }
+
     private func verifyPlaybackRouting(closeSelectedFirst: Bool) async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let existingWindows = Set(scene.windows.map(ObjectIdentifier.init))
