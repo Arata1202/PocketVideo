@@ -300,7 +300,9 @@ final class PlayerViewModel: ObservableObject {
         addPeriodicTimeObserver()
         finishLoading()
 
-        if resumePosition > 0 {
+        // Older history entries can point to the end of an already finished item.
+        let duration = item.duration.seconds
+        if resumePosition.isFinite, resumePosition > 0, !duration.isFinite || resumePosition < duration {
             let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
             player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
                 Task { @MainActor in
@@ -312,6 +314,7 @@ final class PlayerViewModel: ObservableObject {
                 }
             }
         } else {
+            currentPlaybackPosition = 0
             canSaveCurrentPosition = true
             startAutomaticPlaybackIfReady()
         }

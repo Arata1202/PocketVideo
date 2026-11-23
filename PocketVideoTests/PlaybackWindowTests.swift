@@ -38,6 +38,28 @@ final class PlaybackWindowTests: XCTestCase {
         XCTAssertEqual(store.videos.first?.lastPosition, latest)
     }
 
+    func testOpeningHistoryAtOrPastEndPlaysFromStart() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        let duration = try await AVURLAsset(url: url).load(.duration).seconds
+        for position in [duration, duration + 1] {
+            XCTAssertTrue(model.open(url: url, resumePosition: position))
+            for _ in 0..<80 {
+                if model.isPlaying && model.player.currentTime().seconds > 0.1 { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            XCTAssertTrue(model.isPlaying)
+            XCTAssertGreaterThan(model.player.currentTime().seconds, 0)
+            XCTAssertLessThan(model.player.currentTime().seconds, 2)
+            model.closeCurrentVideo()
+        }
+    }
+
     func testRemoteReplayAfterNaturalEndRestartsAndSavesTheNewPosition() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         let model = PlayerViewModel()
