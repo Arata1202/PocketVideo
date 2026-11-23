@@ -2,7 +2,8 @@ import AVKit
 import SwiftUI
 
 struct PlayerView: UIViewControllerRepresentable {
-    let player: AVPlayer
+    let model: PlayerViewModel
+    private var player: AVPlayer { model.player }
     let allowsPictureInPicture: Bool
 
     private static let playbackSpeeds = [
@@ -15,7 +16,7 @@ struct PlayerView: UIViewControllerRepresentable {
     ]
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(model: model)
     }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
@@ -47,26 +48,21 @@ struct PlayerView: UIViewControllerRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, @MainActor AVPlayerViewControllerDelegate {
+        private let model: PlayerViewModel
+
+        init(model: PlayerViewModel) {
+            self.model = model
+        }
+
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
             willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
         ) {
-            let player = playerViewController.player
-            let shouldResume = player.map(Self.isPlaybackIntended) ?? false
-            let item = player?.currentItem
-
-            coordinator.animate(alongsideTransition: nil) { [weak player] context in
-                guard !context.isCancelled, shouldResume else { return }
-                DispatchQueue.main.async {
-                    if let item, player?.currentItem === item {
-                        player?.play()
-                    }
-                }
+            guard let resume = model.fullScreenDismissalResumeAction() else { return }
+            coordinator.animate(alongsideTransition: nil) { context in
+                guard !context.isCancelled else { return }
+                DispatchQueue.main.async { resume() }
             }
-        }
-
-        private static func isPlaybackIntended(_ player: AVPlayer) -> Bool {
-            player.rate > 0 || player.timeControlStatus == .playing || player.timeControlStatus == .waitingToPlayAtSpecifiedRate
         }
     }
 }

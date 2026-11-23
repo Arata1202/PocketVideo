@@ -46,6 +46,23 @@ final class PlaybackWindowTests: XCTestCase {
         try await verifyPlaybackRouting(closeSelectedFirst: false)
     }
 
+    func testHeadphoneDisconnectSupersedesPendingFullScreenResume() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        XCTAssertTrue(model.open(url: url))
+        for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+        let resume = try XCTUnwrap(model.fullScreenDismissalResumeAction())
+        NotificationCenter.default.post(name: AVAudioSession.routeChangeNotification, object: AVAudioSession.sharedInstance(),
+                                        userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue])
+        resume()
+        XCTAssertEqual(model.player.rate, 0)
+    }
+
     func testInterruptionResumesUnlessAudioOutputWasDisconnected() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         let model = PlayerViewModel()

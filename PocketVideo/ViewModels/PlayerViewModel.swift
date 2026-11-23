@@ -10,7 +10,7 @@ private actor PlaybackAudioSession {
     func activate() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
+            try session.setCategory(.playback, mode: .moviePlayback)
             try session.setActive(true)
             return true
         } catch {
@@ -591,7 +591,22 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    // AVKit may pause during dismissal. Resume only if no newer stop request superseded it.
+    private var playbackStopRevision = 0
+
+    func fullScreenDismissalResumeAction() -> (() -> Void)? {
+        guard let item = player.currentItem, audioInterruptionState.currentID == nil,
+              player.rate > 0 || player.timeControlStatus == .waitingToPlayAtSpecifiedRate else { return nil }
+        let revision = playbackStopRevision
+        return { [weak self, weak item] in
+            guard let self, let item, self.player.currentItem === item,
+                  self.playbackStopRevision == revision, !self.didFinishPlayback else { return }
+            self.player.play()
+        }
+    }
+
     private func cancelAutomaticPlayback() {
+        playbackStopRevision += 1
         wantsAutomaticPlayback = false
         automaticPlaybackTask?.cancel()
         automaticPlaybackTask = nil
@@ -625,6 +640,7 @@ final class PlayerViewModel: ObservableObject {
 
         switch type {
         case .began:
+            playbackStopRevision += 1
             audioInterruptionState.currentID = UUID()
             wantsAutomaticPlayback = wantsAutomaticPlayback || player.timeControlStatus == .playing
             automaticPlaybackTask?.cancel()

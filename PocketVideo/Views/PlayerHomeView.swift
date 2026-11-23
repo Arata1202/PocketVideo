@@ -21,7 +21,11 @@ struct PlayerHomeView: View {
         let historyRequest: RecentVideoStore.PendingOpen
     }
     @State private var pendingOpen: OpenRequest?
-    @State private var isPreparingFile = false
+    private enum PreparationPhase {
+        case local, iCloud
+    }
+    @State private var preparationPhase: PreparationPhase?
+    private var isPreparingFile: Bool { preparationPhase != nil }
     @State private var downloadFraction: Double?
     @State private var preparingFileName: String?
     @State private var filePreparationTask: Task<Void, Never>?
@@ -39,16 +43,11 @@ struct PlayerHomeView: View {
                         toolbarButtons
                     }
                 }
-                .navigationDestination(isPresented: $isPlayerPresented) {
+                .navigationDestination(isPresented: playerPresentation) {
                     regularPlayerContent
-                        .onDisappear {
-                            if !isPlayerPresented {
-                                viewModel.closeCurrentVideo()
-                            }
-                        }
                 }
         }
-        .sheet(isPresented: $isSettingsPresented) {
+        .sheet(isPresented: $isSettingsPresented, onDismiss: openPendingURLIfReady) {
             SettingsView()
                 .environmentObject(recentStore)
         }
@@ -86,13 +85,23 @@ struct PlayerHomeView: View {
         }
     }
 
+    private var playerPresentation: Binding<Bool> {
+        Binding(get: { isPlayerPresented }, set: { presented in
+            if !presented {
+                cancelFilePreparation()
+                viewModel.closeCurrentVideo()
+            }
+            isPlayerPresented = presented
+        })
+    }
+
     private var filePreparationOverlay: some View {
         ZStack {
             Color.black.opacity(0.25)
                 .ignoresSafeArea()
 
             VStack(spacing: 12) {
-                Text("iCloudからダウンロード中")
+                Text(preparationPhase == .iCloud ? LocalizedStringKey("iCloudからダウンロード中") : LocalizedStringKey("動画を準備中"))
                     .font(.headline)
                     .multilineTextAlignment(.center)
                     .accessibilityAddTraits(.isHeader)
@@ -204,7 +213,7 @@ struct PlayerHomeView: View {
             Color.black
 
             PlayerView(
-                player: viewModel.player,
+                model: viewModel,
                 allowsPictureInPicture: allowsPictureInPicture
             )
 
@@ -292,7 +301,11 @@ struct PlayerHomeView: View {
         cancelFilePreparation()
         pendingOpen = OpenRequest(url: url, audioStateAtSelection: viewModel.audioInterruptionState,
                                   historyRequest: recentStore.beginOpening())
-        openPendingURLIfReady()
+        if isSettingsPresented {
+            isSettingsPresented = false
+        } else {
+            openPendingURLIfReady()
+        }
     }
 
     private func openPendingURLIfReady() {
@@ -304,20 +317,24 @@ struct PlayerHomeView: View {
     private func prepareAndOpen(_ request: OpenRequest) {
         let url = request.url
 
-        if isFileReadyToOpen(url) {
-            filePreparationTask = Task { await openSelected(request) }
-            return
-        }
-
+        let needsDownload = !isFileReadyToOpen(url)
         let preparationID = filePreparationID
         preparingFileName = url.lastPathComponent
-        isPreparingFile = true
+        if needsDownload { preparationPhase = .iCloud }
         viewModel.clearAlert()
 
         filePreparationTask = Task { @MainActor in
+            // Cached local videos usually open before a progress indicator is useful.
+            let localIndicator = Task { @MainActor in
+                guard !needsDownload else { return }
+                try await Task.sleep(for: .milliseconds(250))
+                guard filePreparationID == preparationID else { return }
+                preparationPhase = .local
+            }
             defer {
+                localIndicator.cancel()
                 if filePreparationID == preparationID {
-                    isPreparingFile = false
+                    preparationPhase = nil
                     preparingFileName = nil
                     downloadFraction = nil
                     filePreparationTask = nil
@@ -325,10 +342,14 @@ struct PlayerHomeView: View {
             }
 
             do {
-                let preparedURL = try await prepareFileForPlayback(url, preparationID: preparationID)
-                guard !Task.isCancelled, filePreparationID == preparationID else { return }
                 var prepared = request
-                prepared.url = preparedURL
+                if needsDownload {
+                    prepared.url = try await prepareFileForPlayback(url, preparationID: preparationID)
+                    try Task.checkCancellation()
+                    preparationPhase = .local
+                    downloadFraction = nil
+                }
+                try Task.checkCancellation()
                 if scenePhase == .active {
                     await openSelected(prepared)
                 } else {
@@ -348,7 +369,7 @@ struct PlayerHomeView: View {
         filePreparationID = UUID()
         filePreparationTask?.cancel()
         filePreparationTask = nil
-        isPreparingFile = false
+        preparationPhase = nil
         preparingFileName = nil
         downloadFraction = nil
     }
