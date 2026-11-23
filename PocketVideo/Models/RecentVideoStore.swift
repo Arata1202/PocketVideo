@@ -1,4 +1,5 @@
 import CryptoKit
+import Darwin
 import Foundation
 
 @MainActor
@@ -53,7 +54,7 @@ final class RecentVideoStore: ObservableObject {
                 result = RecentVideo(
                     id: existing.id, title: candidate.title, sourceKey: candidate.sourceKey,
                     contentFingerprint: candidate.contentFingerprint,
-                    contentDigest: candidate.contentDigest, contentModificationDate: candidate.contentModificationDate,
+                    contentDigest: candidate.contentDigest, fileRevision: candidate.fileRevision,
                     bookmarkData: candidate.bookmarkData, lastPosition: position ?? existing.lastPosition
                 )
             }
@@ -83,17 +84,15 @@ final class RecentVideoStore: ObservableObject {
         let sourceKey = Self.sourceKey(for: url)
         let contentFingerprint = try? Self.contentFingerprint(for: url)
 
-        var metadataURL = url
-        metadataURL.removeCachedResourceValue(forKey: .contentModificationDateKey)
-        let modified = try? metadataURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        let revision = fileRevision(for: url)
         let cached = history.first {
-            $0.sourceKey == sourceKey && modified != nil && $0.contentModificationDate == modified
+            $0.sourceKey == sourceKey && revision != nil && $0.fileRevision == revision
                 && contentFingerprint != nil && $0.contentFingerprint == contentFingerprint
         }
         let digest = try cached?.contentDigest ?? fullContentDigest(for: url)
         return RecentVideo(
             title: title, sourceKey: sourceKey, contentFingerprint: contentFingerprint,
-            contentDigest: digest, contentModificationDate: modified,
+            contentDigest: digest, fileRevision: revision,
             bookmarkData: bookmarkData, lastPosition: position ?? 0
         )
     }
@@ -195,6 +194,17 @@ final class RecentVideoStore: ObservableObject {
             .joined()
 
         return "sampled-sha256:\(fileSize):\(digest)"
+    }
+
+    // The inode and its status-change time also change on replacement or a timestamp-preserving edit.
+    private nonisolated static func fileRevision(for url: URL) -> String? {
+        var info = stat()
+        let status = url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return Int32(-1) }
+            return fstatat(AT_FDCWD, path, &info, 0)
+        }
+        guard status == 0 else { return nil }
+        return "\(info.st_dev):\(info.st_ino):\(info.st_ctimespec.tv_sec):\(info.st_ctimespec.tv_nsec)"
     }
 
     private nonisolated static func fullContentDigest(for url: URL) throws -> String {

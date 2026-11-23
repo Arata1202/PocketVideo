@@ -376,9 +376,7 @@ final class PlayerViewModel: ObservableObject {
 
         let playTarget = commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                self?.didFinishPlayback = false
-                self?.player.play()
-                self?.updateNowPlayingInfo()
+                await self?.resumePlayback()
             }
             return .success
         }
@@ -396,9 +394,7 @@ final class PlayerViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 if self.player.rate == 0 {
-                    self.didFinishPlayback = false
-                    self.player.play()
-                    self.updateNowPlayingInfo()
+                    await self.resumePlayback()
                 } else {
                     self.pausePlayback()
                 }
@@ -544,10 +540,9 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func markPlaybackCompleted() {
-        guard let id = currentRecentVideoID else { return }
         didFinishPlayback = true
         currentPlaybackPosition = 0
-        savePositionIfChanged(0, for: id)
+        if let id = currentRecentVideoID { savePositionIfChanged(0, for: id) }
         updateNowPlayingInfo(elapsedTime: 0, playbackRate: 0)
     }
 
@@ -598,6 +593,18 @@ final class PlayerViewModel: ObservableObject {
                   self.playbackStopRevision == revision, !self.didFinishPlayback else { return }
             self.player.play()
         }
+    }
+
+    func resumePlayback() async {
+        guard let item = player.currentItem else { return }
+        if didFinishPlayback && isAtPlaybackEnd(player.currentTime().seconds) {
+            let revision = playbackStopRevision
+            let finished = await player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
+            guard finished, player.currentItem === item, playbackStopRevision == revision else { return }
+        }
+        didFinishPlayback = false
+        player.play()
+        updateNowPlayingInfo()
     }
 
     func pausePlayback() {

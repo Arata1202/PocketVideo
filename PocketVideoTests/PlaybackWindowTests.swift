@@ -38,6 +38,36 @@ final class PlaybackWindowTests: XCTestCase {
         XCTAssertEqual(store.videos.first?.lastPosition, latest)
     }
 
+    func testRemoteReplayAfterNaturalEndRestartsAndSavesTheNewPosition() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RecentVideoStore(userDefaults: defaults)
+        let video = try await store.addOrUpdate(url: url, position: 11)
+        model.attachStore(store)
+        XCTAssertTrue(model.open(url: url, resumePosition: 11, recentVideoID: video.id))
+        for _ in 0..<100 where store.videos.first?.lastPosition != 0 {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(store.videos.first?.lastPosition, 0)
+        XCTAssertGreaterThan(model.player.currentTime().seconds, 11)
+        await model.resumePlayback()
+        for _ in 0..<50 where !(model.player.currentTime().seconds > 0.1) {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        model.closeCurrentVideo()
+        let position = try XCTUnwrap(store.videos.first?.lastPosition)
+        XCTAssertGreaterThan(position, 0)
+        XCTAssertLessThan(position, 2)
+    }
+
     func testExternalOutputSwitchesBackAndClosesAfterLastPlayer() async throws {
         try await verifyPlaybackRouting(closeSelectedFirst: true)
     }
