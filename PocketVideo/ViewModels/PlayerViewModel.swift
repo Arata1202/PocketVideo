@@ -407,7 +407,7 @@ final class PlayerViewModel: ObservableObject {
             guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
 
             Task { @MainActor in
-                self?.skip(by: event.interval)
+                await self?.skip(by: event.interval)
             }
             return .success
         }
@@ -417,7 +417,7 @@ final class PlayerViewModel: ObservableObject {
             guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
 
             Task { @MainActor in
-                self?.skip(by: -event.interval)
+                await self?.skip(by: -event.interval)
             }
             return .success
         }
@@ -470,23 +470,23 @@ final class PlayerViewModel: ObservableObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
-    private func skip(by interval: TimeInterval) {
+    func skip(by interval: TimeInterval) async {
+        guard let item = player.currentItem else { return }
         let currentSeconds = player.currentTime().seconds
         guard currentSeconds.isFinite else { return }
-
+        let duration = item.duration.seconds
         var targetSeconds = max(currentSeconds + interval, 0)
-        if let duration = player.currentItem?.duration.seconds, duration.isFinite {
-            targetSeconds = min(targetSeconds, duration)
-        }
+        if duration.isFinite { targetSeconds = min(targetSeconds, duration) }
         let targetTime = CMTime(seconds: targetSeconds, preferredTimescale: 600)
 
-        player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            Task { @MainActor in
-                self?.didFinishPlayback = false
-                self?.currentPlaybackPosition = targetSeconds
-                self?.saveCurrentPosition()
-                self?.updateNowPlayingInfo()
-            }
+        let finished = await player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        guard finished, player.currentItem === item else { return }
+        if duration.isFinite && targetSeconds == duration {
+            markPlaybackCompleted()
+        } else {
+            didFinishPlayback = false
+            saveCurrentPosition()
+            updateNowPlayingInfo()
         }
     }
 

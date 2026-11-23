@@ -58,6 +58,8 @@ final class PlaybackWindowTests: XCTestCase {
         }
         XCTAssertEqual(store.videos.first?.lastPosition, 0)
         XCTAssertGreaterThan(model.player.currentTime().seconds, 11)
+        await model.skip(by: 10)
+        XCTAssertEqual(store.videos.first?.lastPosition, 0)
         await model.resumePlayback()
         for _ in 0..<50 where !(model.player.currentTime().seconds > 0.1) {
             try await Task.sleep(for: .milliseconds(100))
