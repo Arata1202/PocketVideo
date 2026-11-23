@@ -11,9 +11,15 @@ struct PlayerHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
     @StateObject private var viewModel = PlayerViewModel()
-    @State private var isFileImporterPresented = false
+    private enum PresentedSheet: String, Identifiable {
+        case files, settings
+        var id: Self { self }
+    }
+    @State private var presentedSheet: PresentedSheet?
+    // The document picker may clear the sheet binding before it delivers the selected URL.
+    @State private var sheetIsActive = false
+    @State private var fileSelectionWasSuperseded = false
     @State private var isPlayerPresented = false
-    @State private var isSettingsPresented = false
     @State private var hasAppeared = false
     private struct OpenRequest {
         var url: URL
@@ -47,23 +53,32 @@ struct PlayerHomeView: View {
                     regularPlayerContent
                 }
         }
-        .sheet(isPresented: $isSettingsPresented, onDismiss: openPendingURLIfReady) {
-            SettingsView()
-                .environmentObject(recentStore)
+        .sheet(item: $presentedSheet, onDismiss: sheetDidDismiss) { sheet in
+            switch sheet {
+            case .files:
+                VideoFilePicker { url in
+                    guard !fileSelectionWasSuperseded else { return }
+                    if let url {
+                        queueOpenURL(url)
+                    } else {
+                        presentedSheet = nil
+                    }
+                }
+            case .settings:
+                SettingsView()
+                    .environmentObject(recentStore)
+            }
         }
-        .fileImporter(
-            isPresented: $isFileImporterPresented,
-            allowedContentTypes: supportedVideoContentTypes,
-            allowsMultipleSelection: false,
-            onCompletion: handleFileImport
-        )
         .accessibilityHidden(isPreparingFile)
         .overlay {
             if isPreparingFile {
                 filePreparationOverlay
             }
         }
-        .onOpenURL(perform: queueOpenURL)
+        .onOpenURL { url in
+            fileSelectionWasSuperseded = true
+            queueOpenURL(url)
+        }
         .alert(item: $viewModel.playbackAlert) { alert in
             Alert(
                 title: Text(alert.title),
@@ -183,14 +198,14 @@ struct PlayerHomeView: View {
     private var toolbarButtons: some View {
         Group {
             Button {
-                isFileImporterPresented = true
+                presentSheet(.files)
             } label: {
                 Image(systemName: "folder")
             }
             .accessibilityLabel("動画を選択")
 
             Button {
-                isSettingsPresented = true
+                presentSheet(.settings)
             } label: {
                 Image(systemName: "gearshape")
             }
@@ -229,7 +244,7 @@ struct PlayerHomeView: View {
     private var openVideoSection: some View {
         Section {
             Button {
-                isFileImporterPresented = true
+                presentSheet(.files)
             } label: {
                 Label("動画を選択", systemImage: "folder")
             }
@@ -284,32 +299,30 @@ struct PlayerHomeView: View {
         .contentShape(Rectangle())
     }
 
-    private func handleFileImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            queueOpenURL(url)
-        case .failure(let error):
-            if let cocoaError = error as? CocoaError, cocoaError.code == .userCancelled {
-                return
-            }
-            viewModel.showAlert(.fileImportFailed)
-        }
+    private func presentSheet(_ sheet: PresentedSheet) {
+        fileSelectionWasSuperseded = false
+        sheetIsActive = true
+        presentedSheet = sheet
     }
 
     private func queueOpenURL(_ url: URL) {
         cancelFilePreparation()
         pendingOpen = OpenRequest(url: url, audioStateAtSelection: viewModel.audioInterruptionState,
                                   historyRequest: recentStore.beginOpening())
-        if isSettingsPresented {
-            isSettingsPresented = false
+        if sheetIsActive {
+            presentedSheet = nil
         } else {
             openPendingURLIfReady()
         }
     }
 
+    private func sheetDidDismiss() {
+        sheetIsActive = false
+        openPendingURLIfReady()
+    }
+
     private func openPendingURLIfReady() {
-        guard hasAppeared, scenePhase == .active, let request = pendingOpen else { return }
+        guard hasAppeared, scenePhase == .active, !sheetIsActive, let request = pendingOpen else { return }
         pendingOpen = nil
         prepareAndOpen(request)
     }
@@ -525,5 +538,34 @@ private final class PlaybackDownloadDocument: UIDocument {
     override func read(from url: URL) throws {
         // UIDocument coordinates the download. AVPlayer reads the video itself.
         try FileHandle(forReadingFrom: url).close()
+    }
+}
+
+private struct VideoFilePicker: UIViewControllerRepresentable {
+    let onFinish: (URL?) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let controller = UIDocumentPickerViewController(forOpeningContentTypes: supportedVideoContentTypes, asCopy: false)
+        controller.delegate = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+
+    @MainActor
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onFinish: (URL?) -> Void
+
+        init(onFinish: @escaping (URL?) -> Void) { self.onFinish = onFinish }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            onFinish(urls.first)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onFinish(nil)
+        }
     }
 }

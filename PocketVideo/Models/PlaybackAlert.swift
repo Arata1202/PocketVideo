@@ -12,13 +12,6 @@ struct PlaybackAlert: Identifiable {
         )
     }
 
-    static var fileImportFailed: PlaybackAlert {
-        PlaybackAlert(
-            title: String(localized: "ファイルを開けませんでした"),
-            message: String(localized: "別のファイルを選ぶか、ファイルアプリで状態を確認してください。")
-        )
-    }
-
     static var filePreparationFailed: PlaybackAlert {
         PlaybackAlert(
             title: String(localized: "動画を準備できませんでした"),

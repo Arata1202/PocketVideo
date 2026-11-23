@@ -43,7 +43,6 @@
 "ファイルにアクセスできません" = "Unable to Access File";
 "ファイルアプリからもう一度選択してください。" = "Select the file again from the Files app.";
 "ファイルを開けませんでした" = "Couldn’t Open File";
-"別のファイルを選ぶか、ファイルアプリで状態を確認してください。" = "Choose another file, or check its status in the Files app.";
 "動画を準備できませんでした" = "Couldn’t Prepare Video";
 "ファイルアプリでダウンロード状況を確認してから、もう一度試してください。" = "Check the download status in the Files app, then try again.";
 "ファイルアプリで端末内にダウンロードしてから、もう一度試してください。" = "Download the file to this device in the Files app, then try again.";

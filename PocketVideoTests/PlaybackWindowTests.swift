@@ -189,6 +189,31 @@ final class PlaybackWindowTests: XCTestCase {
         }
     }
 
+    func testPauseDuringFilePreparationPreventsAutoplayUntilNextSelection() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        XCTAssertTrue(model.open(url: url))
+        for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(model.isPlaying)
+
+        let pendingSelection = model.audioInterruptionState
+        model.pausePlayback()
+        XCTAssertTrue(model.open(url: url, audioStateAtSelection: pendingSelection))
+        for _ in 0..<80 where !model.hasVideo { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(model.hasVideo)
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(model.player.timeControlStatus, .paused)
+
+        XCTAssertTrue(model.open(url: url, audioStateAtSelection: model.audioInterruptionState))
+        for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(model.isPlaying)
+    }
+
     func testDelayedOpenAfterOutputDisconnectWaitsForNewSelection() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         let model = PlayerViewModel()

@@ -386,10 +386,7 @@ final class PlayerViewModel: ObservableObject {
 
         let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                self?.cancelAutomaticPlayback()
-                self?.player.pause()
-                self?.saveCurrentPosition()
-                self?.updateNowPlayingInfo()
+                self?.pausePlayback()
             }
             return .success
         }
@@ -401,12 +398,10 @@ final class PlayerViewModel: ObservableObject {
                 if self.player.rate == 0 {
                     self.didFinishPlayback = false
                     self.player.play()
+                    self.updateNowPlayingInfo()
                 } else {
-                    self.cancelAutomaticPlayback()
-                    self.player.pause()
-                    self.saveCurrentPosition()
+                    self.pausePlayback()
                 }
-                self.updateNowPlayingInfo()
             }
             return .success
         }
@@ -605,6 +600,14 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    func pausePlayback() {
+        audioInterruptionState.autoplayCancellationID = UUID()
+        cancelAutomaticPlayback()
+        player.pause()
+        saveCurrentPosition()
+        updateNowPlayingInfo(playbackRate: 0)
+    }
+
     private func cancelAutomaticPlayback() {
         playbackStopRevision += 1
         wantsAutomaticPlayback = false
@@ -671,11 +674,7 @@ final class PlayerViewModel: ObservableObject {
 
         switch reason {
         case .oldDeviceUnavailable:
-            audioInterruptionState.autoplayCancellationID = UUID()
-            cancelAutomaticPlayback()
-            player.pause()
-            saveCurrentPosition()
-            updateNowPlayingInfo(playbackRate: 0)
+            pausePlayback()
         case .categoryChange, .override, .routeConfigurationChange:
             saveCurrentPosition()
             updateNowPlayingInfo()
