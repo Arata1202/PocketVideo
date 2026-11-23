@@ -5,6 +5,16 @@ struct PlaybackAlert: Identifiable {
     let title: String
     let message: String
 
+    var playLocalCopy: (() -> Void)? = nil
+
+    static func latestVersionUnavailable(playLocalCopy: @escaping () -> Void) -> PlaybackAlert {
+        PlaybackAlert(
+            title: String(localized: "最新版を取得できませんでした"),
+            message: String(localized: "この端末に保存されている以前のバージョンを再生できます。"),
+            playLocalCopy: playLocalCopy
+        )
+    }
+
     static var fileAccessFailed: PlaybackAlert {
         PlaybackAlert(
             title: String(localized: "ファイルにアクセスできません"),

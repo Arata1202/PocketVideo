@@ -22,10 +22,12 @@ struct PlayerHomeView: View {
     @State private var isPlayerPresented = false
     @State private var hasAppeared = false
     private struct OpenRequest {
+        var allowsLocalCopy = false
         var url: URL
         let audioStateAtSelection: PlayerViewModel.AudioInterruptionState
         let historyRequest: RecentVideoStore.PendingOpen
     }
+    @State private var localCopyOption: OpenRequest?
     @State private var pendingOpen: OpenRequest?
     private enum PreparationPhase {
         case local, iCloud
@@ -80,7 +82,15 @@ struct PlayerHomeView: View {
             queueOpenURL(url)
         }
         .alert(item: $viewModel.playbackAlert) { alert in
-            Alert(
+            if let playLocalCopy = alert.playLocalCopy {
+                return Alert(
+                    title: Text(alert.title),
+                    message: Text(alert.message),
+                    primaryButton: .default(Text("端末にあるバージョンを再生"), action: playLocalCopy),
+                    secondaryButton: .cancel(Text("キャンセル"))
+                )
+            }
+            return Alert(
                 title: Text(alert.title),
                 message: Text(alert.message),
                 dismissButton: .default(Text("OK"))
@@ -144,6 +154,10 @@ struct PlayerHomeView: View {
                         .accessibilityHidden(true)
                 }
 
+                if let localCopyOption {
+                    Button("端末にあるバージョンを再生") { playLocalCopy(localCopyOption) }
+                        .buttonStyle(.bordered)
+                }
                 Button("キャンセル") {
                     cancelFilePreparation()
                 }
@@ -330,7 +344,8 @@ struct PlayerHomeView: View {
     private func prepareAndOpen(_ request: OpenRequest) {
         let url = request.url
 
-        let needsDownload = !isFileReadyToOpen(url)
+        let availability = cloudAvailability(of: url) ?? .unknown
+        let needsDownload = availability.needsDownload(allowsLocalCopy: request.allowsLocalCopy)
         let preparationID = filePreparationID
         preparingFileName = url.lastPathComponent
         if needsDownload { preparationPhase = .iCloud }
@@ -347,6 +362,7 @@ struct PlayerHomeView: View {
             defer {
                 localIndicator.cancel()
                 if filePreparationID == preparationID {
+                    localCopyOption = nil
                     preparationPhase = nil
                     preparingFileName = nil
                     downloadFraction = nil
@@ -357,8 +373,14 @@ struct PlayerHomeView: View {
             do {
                 var prepared = request
                 if needsDownload {
-                    prepared.url = try await prepareFileForPlayback(url, preparationID: preparationID)
+                    prepared.url = try await prepareFileForPlayback(url, availability: availability, preparationID: preparationID) { localURL in
+                        guard filePreparationID == preparationID, !Task.isCancelled else { return }
+                        var option = request
+                        option.url = localURL
+                        localCopyOption = option
+                    }
                     try Task.checkCancellation()
+                    localCopyOption = nil
                     preparationPhase = .local
                     downloadFraction = nil
                 }
@@ -372,12 +394,36 @@ struct PlayerHomeView: View {
                 return
             } catch {
                 guard filePreparationID == preparationID else { return }
-                viewModel.showAlert(.filePreparationFailed)
+                // An offline provider can fail the metadata read as well as the transfer.
+                switch cloudAvailability(of: url) ?? availability {
+                case .current:
+                    if scenePhase == .active {
+                        await openSelected(request)
+                    } else {
+                        pendingOpen = request
+                    }
+                case .stale:
+                    viewModel.showAlert(.latestVersionUnavailable {
+                        guard filePreparationID == preparationID else { return }
+                        playLocalCopy(request)
+                    })
+                default:
+                    viewModel.showAlert(.filePreparationFailed)
+                }
             }
         }
     }
 
+    private func playLocalCopy(_ request: OpenRequest) {
+        cancelFilePreparation()
+        var fallback = request
+        fallback.allowsLocalCopy = true
+        pendingOpen = fallback
+        openPendingURLIfReady()
+    }
+
     private func cancelFilePreparation() {
+        localCopyOption = nil
         pendingOpen = nil
         filePreparationID = UUID()
         filePreparationTask?.cancel()
@@ -388,7 +434,10 @@ struct PlayerHomeView: View {
     }
 
     @MainActor
-    private func prepareFileForPlayback(_ url: URL, preparationID: UUID) async throws -> URL {
+    private func prepareFileForPlayback(
+        _ url: URL, availability: CloudVideoAvailability, preparationID: UUID,
+        offerLocalCopy: @escaping @MainActor (URL) -> Void
+    ) async throws -> URL {
         let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
         defer {
             if didAccessSecurityScope {
@@ -396,7 +445,9 @@ struct PlayerHomeView: View {
             }
         }
 
-        if isFileReadyToOpen(url) {
+        guard availability != .unknown else { throw CocoaError(.fileReadUnknown) }
+        if availability == .stale {
+            try await CloudVideoAvailability.downloadLatest(at: url) { offerLocalCopy(url) }
             return url
         }
 
@@ -429,6 +480,10 @@ struct PlayerHomeView: View {
         let closed = await document.close()
         try Task.checkCancellation()
         guard closed else { throw CocoaError(.fileReadUnknown) }
+        // Opening a known iCloud document only establishes that its bytes are readable.
+        if cloudAvailability(of: preparedURL) != .current {
+            try await CloudVideoAvailability.downloadLatest(at: preparedURL) { offerLocalCopy(preparedURL) }
+        }
         return preparedURL
     }
 
@@ -460,29 +515,10 @@ struct PlayerHomeView: View {
         }
     }
 
-    private func isFileReadyToOpen(_ url: URL) -> Bool {
-        let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
-        defer {
-            if didAccessSecurityScope {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-
-        let resourceValues = try? url.resourceValues(forKeys: [
-            .isUbiquitousItemKey,
-            .ubiquitousItemDownloadingStatusKey
-        ])
-        #if DEBUG
-        print("[CloudProgress] iCloud=\(String(describing: resourceValues?.isUbiquitousItem)) status=\(resourceValues?.ubiquitousItemDownloadingStatus?.rawValue ?? "unknown")")
-        #endif
-        guard resourceValues?.isUbiquitousItem == true else { return true }
-
-        switch resourceValues?.ubiquitousItemDownloadingStatus {
-        case .current, .downloaded:
-            return true
-        default:
-            return false
-        }
+    private func cloudAvailability(of url: URL) -> CloudVideoAvailability? {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        return try? CloudVideoAvailability.read(at: url)
     }
 
     private func openRecent(_ video: RecentVideo) {

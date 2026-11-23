@@ -56,3 +56,6 @@
 /* Store errors */
 "保存済みのファイル参照が無効です。" = "The saved file reference is no longer valid.";
 "保存済みの動画ファイルが見つかりません。" = "The saved video file couldn’t be found.";
+"最新版を取得できませんでした" = "Couldn’t Download the Latest Version";
+"この端末に保存されている以前のバージョンを再生できます。" = "You can play the older version saved on this device.";
+"端末にあるバージョンを再生" = "Play Local Version";

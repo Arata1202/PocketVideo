@@ -70,3 +70,11 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.arata1202.PocketVideoTests
+schemes:
+  PocketVideo:
+    build:
+      targets:
+        PocketVideo: all
+    test:
+      targets:
+        - PocketVideoTests
