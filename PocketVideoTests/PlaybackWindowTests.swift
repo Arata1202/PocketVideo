@@ -26,6 +26,70 @@ final class PlaybackWindowTests: XCTestCase {
         await fulfillment(of: [ready], timeout: 10)
     }
 
+    func testReplacementOpenWaitsForCurrentDestinationToAppear() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        XCTAssertTrue(model.open(url: url, waitForPlayerPresentation: true))
+        let dismissed = try XCTUnwrap(model.pendingPlayerPresentation)
+        model.closeCurrentVideo()
+        XCTAssertTrue(model.open(url: url, waitForPlayerPresentation: true))
+        let presentation = try XCTUnwrap(model.pendingPlayerPresentation)
+        XCTAssertTrue(model.open(url: url, resumePosition: 3))
+        XCTAssertEqual(model.pendingPlayerPresentation, presentation)
+        for _ in 0..<80 where !model.hasVideo { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(model.hasVideo)
+        model.playerWasPresented(dismissed)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(model.player.timeControlStatus, .paused)
+        XCTAssertEqual(model.player.currentTime().seconds, 3, accuracy: 0.1)
+
+        model.playerWasPresented(presentation)
+        for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+        XCTAssertTrue(model.isPlaying)
+    }
+
+    func testDeferredRemotePlayHonorsSubsequentCommandsAndOwnership() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        for command in ["play", "pause", "toggle", "handoff"] {
+            let otherWindow = PlayerViewModel()
+            defer { otherWindow.closeCurrentVideo() }
+            XCTAssertTrue(model.open(url: url, waitForPlayerPresentation: true))
+            let presentation = try XCTUnwrap(model.pendingPlayerPresentation)
+            for _ in 0..<80 where !model.hasVideo { try await Task.sleep(for: .milliseconds(100)) }
+            XCTAssertTrue(model.hasVideo)
+            model.pausePlayback()
+            await model.resumePlayback()
+            XCTAssertEqual(model.player.timeControlStatus, .paused)
+            if command == "pause" { model.pausePlayback() }
+            if command == "handoff" {
+                XCTAssertTrue(otherWindow.open(url: url))
+                for _ in 0..<80 where !otherWindow.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+                XCTAssertTrue(otherWindow.isPlaying)
+            }
+            model.playerWasPresented(presentation)
+            if command == "toggle" { await model.togglePlayback() }
+            if command != "play" {
+                try await Task.sleep(for: .milliseconds(200))
+                XCTAssertEqual(model.player.timeControlStatus, .paused)
+            } else {
+                for _ in 0..<80 where !model.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+                XCTAssertTrue(model.isPlaying)
+            }
+            model.closeCurrentVideo()
+        }
+    }
+
     func testClosingPreviouslyPausedWindowPreservesLatestPosition() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         defer { try? FileManager.default.removeItem(at: url) }

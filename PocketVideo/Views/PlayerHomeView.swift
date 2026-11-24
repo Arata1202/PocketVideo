@@ -199,6 +199,14 @@ struct PlayerHomeView: View {
             .scrollContentBackground(.hidden)
             .background(Color(uiColor: .systemBackground))
         }
+        .background {
+            if let id = viewModel.pendingPlayerPresentation {
+                PlayerDestinationAppearance { viewModel.playerWasPresented(id) }
+                    .id(id)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .navigationTitle(viewModel.currentVideoTitle ?? "Pocket Video")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Color(uiColor: .systemBackground), for: .navigationBar)
@@ -246,7 +254,8 @@ struct PlayerHomeView: View {
             if viewModel.hasVideo {
                 PlayerView(
                     model: viewModel,
-                    allowsPictureInPicture: allowsPictureInPicture
+                    allowsPictureInPicture: allowsPictureInPicture,
+                    isPresented: viewModel.pendingPlayerPresentation == nil
                 )
             }
 
@@ -498,7 +507,8 @@ struct PlayerHomeView: View {
                 }
                 let storedURL = try recentStore.resolveURL(for: recent)
                 guard viewModel.open(url: storedURL, resumePosition: recent.lastPosition, recentVideoID: recent.id,
-                                     displayTitle: recent.title, audioStateAtSelection: request.audioStateAtSelection)
+                                     displayTitle: recent.title, audioStateAtSelection: request.audioStateAtSelection,
+                                     waitForPlayerPresentation: !isPlayerPresented)
                 else { return false }
                 isPlayerPresented = true
                 return true

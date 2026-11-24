@@ -72,6 +72,7 @@ final class PlayerViewModel: ObservableObject {
 
     private(set) var audioInterruptionState = AudioInterruptionState()
     private var interruptionAtSelection: UUID?
+    @Published private(set) var pendingPlayerPresentation: UUID?
     private var wantsAutomaticPlayback = false
     private var automaticPlaybackTask: Task<Void, Never>?
 
@@ -117,7 +118,7 @@ final class PlayerViewModel: ObservableObject {
 
     @discardableResult
     func open(url: URL, resumePosition: TimeInterval = 0, recentVideoID: RecentVideo.ID? = nil, displayTitle: String? = nil,
-              audioStateAtSelection: AudioInterruptionState? = nil) -> Bool {
+              audioStateAtSelection: AudioInterruptionState? = nil, waitForPlayerPresentation: Bool = false) -> Bool {
         let requestID = UUID()
         cancelAutomaticPlayback()
         openRequestID = requestID
@@ -151,6 +152,7 @@ final class PlayerViewModel: ObservableObject {
             return false
         }
 
+        if waitForPlayerPresentation { pendingPlayerPresentation = UUID() }
         lastSavedPosition = nil
         currentRecentVideoID = recentVideoID
         currentVideoTitle = displayTitle ?? url.lastPathComponent
@@ -183,6 +185,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func closeCurrentVideo() {
+        pendingPlayerPresentation = nil
         cancelAutomaticPlayback()
         openRequestID = UUID()
         saveCurrentPosition()
@@ -383,6 +386,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private var remoteInstallationID: UUID?
+    private var hasDeferredRemotePlay = false
 
     private func ownsRemoteCommands(_ id: UUID) -> Bool {
         remoteInstallationID == id && Self.systemPlaybackOwner === self
@@ -416,11 +420,7 @@ final class PlayerViewModel: ObservableObject {
         let togglePlayPauseTarget = commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.ownsRemoteCommands(installationID) else { return }
-                if self.player.rate == 0 {
-                    await self.resumePlayback(remoteInstallation: installationID)
-                } else {
-                    self.pausePlayback()
-                }
+                await self.togglePlayback(remoteInstallation: installationID)
             }
             return .success
         }
@@ -461,6 +461,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func removeRemoteCommandTargets() {
+        if hasDeferredRemotePlay { cancelAutomaticPlayback() }
         remoteInstallationID = nil
         remoteCommandTargets.forEach { target in
             target.command.removeTarget(target.target)
@@ -588,8 +589,14 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    func playerWasPresented(_ presentationID: UUID) {
+        guard pendingPlayerPresentation == presentationID else { return }
+        pendingPlayerPresentation = nil
+        startAutomaticPlaybackIfReady()
+    }
+
     private func startAutomaticPlaybackIfReady() {
-        guard wantsAutomaticPlayback, canSaveCurrentPosition,
+        guard wantsAutomaticPlayback, canSaveCurrentPosition, pendingPlayerPresentation == nil,
               audioInterruptionState.currentID == nil || audioInterruptionState.currentID == interruptionAtSelection,
               automaticPlaybackTask == nil, let item = player.currentItem else { return }
         automaticPlaybackTask = Task { [weak self] in
@@ -597,6 +604,7 @@ final class PlayerViewModel: ObservableObject {
             let activated = await PlaybackAudioSession.shared.activate()
             guard !Task.isCancelled, let self, self.player.currentItem === item else { return }
             self.automaticPlaybackTask = nil
+            self.hasDeferredRemotePlay = false
             guard activated else {
                 self.wantsAutomaticPlayback = false
                 self.showAlert(.audioSessionUnavailable)
@@ -632,9 +640,22 @@ final class PlayerViewModel: ObservableObject {
             guard finished, player.currentItem === item, playbackStopRevision == revision else { return }
         }
         if let remoteInstallation, !ownsRemoteCommands(remoteInstallation) { return }
+        if pendingPlayerPresentation != nil {
+            if !wantsAutomaticPlayback { hasDeferredRemotePlay = true }
+            wantsAutomaticPlayback = true
+            return
+        }
         didFinishPlayback = false
         player.play()
         updateNowPlayingInfo()
+    }
+
+    func togglePlayback(remoteInstallation: UUID? = nil) async {
+        if player.rate != 0 || wantsAutomaticPlayback {
+            pausePlayback()
+        } else {
+            await resumePlayback(remoteInstallation: remoteInstallation)
+        }
     }
 
     func pausePlayback() {
@@ -646,6 +667,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func cancelAutomaticPlayback() {
+        hasDeferredRemotePlay = false
         playbackStopRevision += 1
         wantsAutomaticPlayback = false
         automaticPlaybackTask?.cancel()
