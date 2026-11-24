@@ -296,10 +296,7 @@ final class PlayerViewModel: ObservableObject {
     private func preparePlayback(item: AVPlayerItem, resumePosition: TimeInterval) {
         guard player.currentItem === item else { return }
 
-        hasVideo = true
         didFinishPlayback = false
-        addPeriodicTimeObserver()
-        finishLoading()
 
         // Older history entries can point to the end of an already finished item.
         let duration = item.duration.seconds
@@ -307,7 +304,11 @@ final class PlayerViewModel: ObservableObject {
             let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
             player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
                 Task { @MainActor in
-                    guard finished, let self, self.hasVideo, self.player.currentItem === item else { return }
+                    guard let self, self.player.currentItem === item else { return }
+                    guard finished else {
+                        self.handlePlayerItemFailure()
+                        return
+                    }
                     let seconds = self.player.currentTime().seconds
                     self.finishInitialSeek(at: seconds.isFinite ? seconds : resumePosition)
                 }
@@ -321,6 +322,9 @@ final class PlayerViewModel: ObservableObject {
         currentPlaybackPosition = position
         lastSavedPosition = position
         canSaveCurrentPosition = true
+        addPeriodicTimeObserver()
+        hasVideo = true
+        finishLoading()
         claimSystemPlaybackControls()
         startAutomaticPlaybackIfReady()
     }
@@ -493,7 +497,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func skip(by interval: TimeInterval, remoteInstallation: UUID? = nil) async {
-        guard let item = player.currentItem else { return }
+        guard hasVideo, let item = player.currentItem else { return }
         let currentSeconds = player.currentTime().seconds
         guard currentSeconds.isFinite else { return }
         let duration = item.duration.seconds
@@ -504,9 +508,6 @@ final class PlayerViewModel: ObservableObject {
         let finished = await player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
         guard finished, player.currentItem === item else { return }
         if let remoteInstallation, !ownsRemoteCommands(remoteInstallation) { return }
-        if !canSaveCurrentPosition {
-            finishInitialSeek(at: currentPlaybackPosition)
-        }
         if duration.isFinite && targetSeconds == duration {
             markPlaybackCompleted()
         } else {

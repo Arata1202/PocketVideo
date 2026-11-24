@@ -1,4 +1,5 @@
 import AVFoundation
+import Combine
 import MediaPlayer
 import UIKit
 import XCTest
@@ -6,6 +7,25 @@ import XCTest
 
 @MainActor
 final class PlaybackWindowTests: XCTestCase {
+    func testPlaybackControlsBecomeAvailableAtRestoredPosition() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        let model = PlayerViewModel()
+        defer {
+            model.closeCurrentVideo()
+            try? FileManager.default.removeItem(at: url)
+        }
+        try writeTestMedia(to: url)
+        let ready = expectation(description: "Player is available to the native controls")
+        let observation = model.$hasVideo.filter { $0 }.first().sink { _ in
+            XCTAssertEqual(model.player.currentTime().seconds, 6, accuracy: 0.1)
+            ready.fulfill()
+        }
+        defer { observation.cancel() }
+
+        XCTAssertTrue(model.open(url: url, resumePosition: 6))
+        await fulfillment(of: [ready], timeout: 10)
+    }
+
     func testClosingPreviouslyPausedWindowPreservesLatestPosition() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         defer { try? FileManager.default.removeItem(at: url) }

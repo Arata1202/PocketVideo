@@ -243,10 +243,12 @@ struct PlayerHomeView: View {
         ZStack {
             Color.black
 
-            PlayerView(
-                model: viewModel,
-                allowsPictureInPicture: allowsPictureInPicture
-            )
+            if viewModel.hasVideo {
+                PlayerView(
+                    model: viewModel,
+                    allowsPictureInPicture: allowsPictureInPicture
+                )
+            }
 
             if viewModel.showsLoadingIndicator {
                 ProgressView()
