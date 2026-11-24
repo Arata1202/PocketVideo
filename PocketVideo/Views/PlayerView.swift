@@ -6,14 +6,12 @@ struct PlayerView: UIViewControllerRepresentable {
     private var player: AVPlayer { model.player }
     let allowsPictureInPicture: Bool
 
-    private static let playbackSpeeds = [
-        AVPlaybackSpeed(rate: 0.5, localizedName: "0.5×"),
-        AVPlaybackSpeed(rate: 0.75, localizedName: "0.75×"),
-        AVPlaybackSpeed(rate: 1, localizedName: "1×"),
-        AVPlaybackSpeed(rate: 1.25, localizedName: "1.25×"),
-        AVPlaybackSpeed(rate: 1.5, localizedName: "1.5×"),
-        AVPlaybackSpeed(rate: 2, localizedName: "2×"),
-    ]
+    private static var playbackSpeeds: [AVPlaybackSpeed] {
+        [0.5, 0.75, 1, 1.25, 1.5, 2].map { rate in
+            let label = rate.formatted(.number.precision(.fractionLength(0...2)))
+            return AVPlaybackSpeed(rate: Float(rate), localizedName: "\(label)×")
+        }
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(model: model)

@@ -55,6 +55,20 @@ final class CloudVideoAvailabilityTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testCancellingDocumentPreparationReleasesWaiterAndClosesLateOpen() async throws {
+        let document = DelayedDocument(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("video.mp4"))
+        let task = Task { try await document.prepare() }
+        await fulfillment(of: [document.started], timeout: 2)
+        task.cancel()
+        do {
+            try await task.value
+            XCTFail("Cancelled preparation completed successfully")
+        } catch is CancellationError {}
+        document.completeOpen?(true)
+        await fulfillment(of: [document.closed], timeout: 2)
+    }
+
     func testCancellingWaitDoesNotOfferFallback() async {
         let task = Task {
             try await CloudVideoAvailability.waitForCurrent { (.downloaded, true, nil) }
@@ -66,5 +80,21 @@ final class CloudVideoAvailabilityTests: XCTestCase {
         } catch {
             XCTAssertTrue(error is CancellationError)
         }
+    }
+}
+
+private final class DelayedDocument: PlaybackDownloadDocument {
+    let started = XCTestExpectation(description: "Provider received open")
+    let closed = XCTestExpectation(description: "Late document closed")
+    var completeOpen: ((Bool) -> Void)?
+
+    override func open(completionHandler: ((Bool) -> Void)? = nil) {
+        completeOpen = completionHandler
+        started.fulfill()
+    }
+
+    override func close(completionHandler: ((Bool) -> Void)? = nil) {
+        completionHandler?(true)
+        closed.fulfill()
     }
 }

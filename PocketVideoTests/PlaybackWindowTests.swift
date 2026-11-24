@@ -38,6 +38,33 @@ final class PlaybackWindowTests: XCTestCase {
         XCTAssertEqual(store.videos.first?.lastPosition, latest)
     }
 
+    func testUntouchedPausedWindowPreservesOtherWindowsProgress() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try writeTestMedia(to: url)
+        let suite = UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = RecentVideoStore(userDefaults: defaults)
+        let row = try await store.addOrUpdate(url: url, position: 2)
+        let model = PlayerViewModel()
+        model.attachStore(store)
+        for start in [0.0, 2.0] {
+            let selection = model.audioInterruptionState
+            model.pausePlayback()
+            XCTAssertTrue(model.open(url: url, resumePosition: start, recentVideoID: row.id,
+                                     audioStateAtSelection: selection))
+            store.updatePosition(for: row.id, position: 9)
+            for _ in 0..<80 where !model.hasVideo { try await Task.sleep(for: .milliseconds(50)) }
+            try await Task.sleep(for: .milliseconds(150))
+            let item = try XCTUnwrap(model.player.currentItem)
+            NotificationCenter.default.post(name: .AVPlayerItemDidPlayToEndTime, object: item)
+            XCTAssertEqual(model.player.timeControlStatus, .paused)
+            model.closeCurrentVideo()
+            XCTAssertEqual(store.videos.first?.lastPosition, 9)
+        }
+    }
+
     func testOpeningHistoryAtOrPastEndPlaysFromStart() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
         let model = PlayerViewModel()

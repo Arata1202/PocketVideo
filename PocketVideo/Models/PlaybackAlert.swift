@@ -15,6 +15,11 @@ struct PlaybackAlert: Identifiable {
         )
     }
 
+    static var audioSessionUnavailable: PlaybackAlert {
+        PlaybackAlert(title: String(localized: "音声を開始できませんでした"),
+                      message: String(localized: "もう一度再生してください。"))
+    }
+
     static var fileAccessFailed: PlaybackAlert {
         PlaybackAlert(
             title: String(localized: "ファイルにアクセスできません"),

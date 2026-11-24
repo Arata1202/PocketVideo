@@ -11,14 +11,14 @@ struct PlayerHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("allowsPictureInPicture") private var allowsPictureInPicture = true
     @StateObject private var viewModel = PlayerViewModel()
-    private enum PresentedSheet: String, Identifiable {
-        case files, settings
+    private enum PresentedSheet: Hashable, Identifiable {
+        case files(UUID), settings
         var id: Self { self }
     }
     @State private var presentedSheet: PresentedSheet?
     // The document picker may clear the sheet binding before it delivers the selected URL.
     @State private var sheetIsActive = false
-    @State private var fileSelectionWasSuperseded = false
+    @State private var currentPickerID: UUID?
     @State private var isPlayerPresented = false
     @State private var hasAppeared = false
     private struct OpenRequest {
@@ -57,9 +57,10 @@ struct PlayerHomeView: View {
         }
         .sheet(item: $presentedSheet, onDismiss: sheetDidDismiss) { sheet in
             switch sheet {
-            case .files:
+            case .files(let id):
                 VideoFilePicker { url in
-                    guard !fileSelectionWasSuperseded else { return }
+                    guard currentPickerID == id else { return }
+                    currentPickerID = nil
                     if let url {
                         queueOpenURL(url)
                     } else {
@@ -78,7 +79,7 @@ struct PlayerHomeView: View {
             }
         }
         .onOpenURL { url in
-            fileSelectionWasSuperseded = true
+            currentPickerID = nil
             queueOpenURL(url)
         }
         .alert(item: $viewModel.playbackAlert) { alert in
@@ -212,7 +213,7 @@ struct PlayerHomeView: View {
     private var toolbarButtons: some View {
         Group {
             Button {
-                presentSheet(.files)
+                presentSheet(.files(UUID()))
             } label: {
                 Image(systemName: "folder")
             }
@@ -225,6 +226,7 @@ struct PlayerHomeView: View {
             }
             .accessibilityLabel("設定")
         }
+        .disabled(filePreparationTask != nil)
     }
 
     private func videoArea(in geometry: GeometryProxy) -> some View {
@@ -258,10 +260,11 @@ struct PlayerHomeView: View {
     private var openVideoSection: some View {
         Section {
             Button {
-                presentSheet(.files)
+                presentSheet(.files(UUID()))
             } label: {
                 Label("動画を選択", systemImage: "folder")
             }
+            .disabled(filePreparationTask != nil)
         }
     }
 
@@ -314,13 +317,15 @@ struct PlayerHomeView: View {
     }
 
     private func presentSheet(_ sheet: PresentedSheet) {
-        fileSelectionWasSuperseded = false
+        guard filePreparationTask == nil else { return }
+        if case let .files(id) = sheet { currentPickerID = id } else { currentPickerID = nil }
         sheetIsActive = true
         presentedSheet = sheet
     }
 
     private func queueOpenURL(_ url: URL) {
         cancelFilePreparation()
+        currentPickerID = nil
         pendingOpen = OpenRequest(url: url, audioStateAtSelection: viewModel.audioInterruptionState,
                                   historyRequest: recentStore.beginOpening())
         if sheetIsActive {
@@ -370,10 +375,11 @@ struct PlayerHomeView: View {
                 }
             }
 
+            var prepared = request
             do {
-                var prepared = request
                 if needsDownload {
-                    prepared.url = try await prepareFileForPlayback(url, availability: availability, preparationID: preparationID) { localURL in
+                    prepared.url = try await prepareFileForPlayback(url, availability: availability, preparationID: preparationID,
+                        resolvedURL: { prepared.url = $0 }) { localURL in
                         guard filePreparationID == preparationID, !Task.isCancelled else { return }
                         var option = request
                         option.url = localURL
@@ -395,17 +401,17 @@ struct PlayerHomeView: View {
             } catch {
                 guard filePreparationID == preparationID else { return }
                 // An offline provider can fail the metadata read as well as the transfer.
-                switch cloudAvailability(of: url) ?? availability {
+                switch cloudAvailability(of: prepared.url) ?? (prepared.url == url ? availability : .unknown) {
                 case .current:
                     if scenePhase == .active {
-                        await openSelected(request)
+                        await openSelected(prepared)
                     } else {
-                        pendingOpen = request
+                        pendingOpen = prepared
                     }
                 case .stale:
                     viewModel.showAlert(.latestVersionUnavailable {
                         guard filePreparationID == preparationID else { return }
-                        playLocalCopy(request)
+                        playLocalCopy(prepared)
                     })
                 default:
                     viewModel.showAlert(.filePreparationFailed)
@@ -436,14 +442,11 @@ struct PlayerHomeView: View {
     @MainActor
     private func prepareFileForPlayback(
         _ url: URL, availability: CloudVideoAvailability, preparationID: UUID,
+        resolvedURL: (URL) -> Void,
         offerLocalCopy: @escaping @MainActor (URL) -> Void
     ) async throws -> URL {
-        let didAccessSecurityScope = url.startAccessingSecurityScopedResource()
-        defer {
-            if didAccessSecurityScope {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
 
         guard availability != .unknown else { throw CocoaError(.fileReadUnknown) }
         if availability == .stale {
@@ -465,21 +468,16 @@ struct PlayerHomeView: View {
                 try? await Task.sleep(for: .milliseconds(250))
             }
         }
-        let opened = await document.open()
-        monitor.cancel()
-        #if DEBUG
-        if filePreparationID == preparationID {
-            print("[CloudProgress] document opened=\(opened) reportedPercentage=\(downloadFraction != nil)")
+        defer { monitor.cancel() }
+        do {
+            try await document.prepare()
+        } catch {
+            resolvedURL(document.fileURL)
+            throw error
         }
-        #endif
-        guard opened else {
-            try Task.checkCancellation()
-            throw CocoaError(.fileReadUnknown)
-        }
-        let preparedURL = document.fileURL
-        let closed = await document.close()
         try Task.checkCancellation()
-        guard closed else { throw CocoaError(.fileReadUnknown) }
+        let preparedURL = document.fileURL
+        resolvedURL(preparedURL)
         // Opening a known iCloud document only establishes that its bytes are readable.
         if cloudAvailability(of: preparedURL) != .current {
             try await CloudVideoAvailability.downloadLatest(at: preparedURL) { offerLocalCopy(preparedURL) }
@@ -490,23 +488,19 @@ struct PlayerHomeView: View {
     private func openSelected(_ request: OpenRequest) async {
         do {
             viewModel.saveCurrentPosition()
-            let recent = try await recentStore.addOrUpdate(url: request.url, request: request.historyRequest)
-            try Task.checkCancellation()
-            guard scenePhase == .active else {
-                pendingOpen = request
-                return
+            _ = try await recentStore.addOrUpdate(url: request.url, request: request.historyRequest) { recent in
+                try Task.checkCancellation()
+                guard scenePhase == .active, !sheetIsActive else {
+                    pendingOpen = request
+                    return false
+                }
+                let storedURL = try recentStore.resolveURL(for: recent)
+                guard viewModel.open(url: storedURL, resumePosition: recent.lastPosition, recentVideoID: recent.id,
+                                     displayTitle: recent.title, audioStateAtSelection: request.audioStateAtSelection)
+                else { return false }
+                isPlayerPresented = true
+                return true
             }
-            let storedURL = try recentStore.resolveURL(for: recent)
-            guard viewModel.open(
-                url: storedURL,
-                resumePosition: recent.lastPosition,
-                recentVideoID: recent.id,
-                displayTitle: recent.title,
-                audioStateAtSelection: request.audioStateAtSelection
-            ) else {
-                return
-            }
-            isPlayerPresented = true
         } catch is CancellationError {
             return
         } catch {
@@ -570,7 +564,40 @@ struct PlayerHomeView: View {
     }
 }
 
-private final class PlaybackDownloadDocument: UIDocument {
+class PlaybackDownloadDocument: UIDocument {
+    @MainActor private var preparation: CheckedContinuation<Void, Error>?
+
+    @MainActor
+    func prepare() async throws {
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation { continuation in
+                preparation = continuation
+                Task { @MainActor in
+                    guard preparation != nil else { return }
+                    guard await open() else {
+                        finish(.failure(CocoaError(.fileReadUnknown)))
+                        return
+                    }
+                    // Even a provider that completes after cancellation must be closed.
+                    let closed = await close()
+                    finish(closed ? .success(()) : .failure(CocoaError(.fileReadUnknown)))
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in
+                if let progress = self.progress, progress.isCancellable { progress.cancel() }
+                self.finish(.failure(CancellationError()))
+            }
+        }
+    }
+
+    @MainActor
+    private func finish(_ result: Result<Void, Error>) {
+        preparation?.resume(with: result)
+        preparation = nil
+    }
+
     override func read(from url: URL) throws {
         // UIDocument coordinates the download. AVPlayer reads the video itself.
         try FileHandle(forReadingFrom: url).close()

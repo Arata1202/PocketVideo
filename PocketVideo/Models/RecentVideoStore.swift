@@ -14,6 +14,7 @@ final class RecentVideoStore: ObservableObject {
 
     private let pendingOpens = NSHashTable<PendingOpen>.weakObjects()
     private var historyRevision = 0
+    private var pendingDigests: Set<String> = []
     private let storageKey = "recentVideos"
     private let maxItems: Int
     private let userDefaults: UserDefaults
@@ -31,7 +32,8 @@ final class RecentVideoStore: ObservableObject {
     }
 
     /// Returns a playable entry even when a later history deletion prevents saving it.
-    func addOrUpdate(url: URL, position: TimeInterval? = nil, request: PendingOpen? = nil) async throws -> RecentVideo {
+    func addOrUpdate(url: URL, position: TimeInterval? = nil, request: PendingOpen? = nil,
+                     open: (RecentVideo) throws -> Bool = { _ in true }) async throws -> RecentVideo {
         let pending = request ?? beginOpening()
         await finishMigration()
         let candidate = try await Self.prepareVideo(url: url, position: position, history: videos)
@@ -40,9 +42,11 @@ final class RecentVideoStore: ObservableObject {
             let revision = historyRevision
             let removed = pending.removedVideos
             if pending.wasCleared || removed.contains(where: { $0.sourceKey == candidate.sourceKey }) {
+                _ = try open(candidate)
                 return candidate
             }
             if !removed.isEmpty, await Self.matchID(for: candidate, in: removed) != nil {
+                _ = try open(candidate)
                 return candidate
             }
             let matchID = await Self.matchID(for: candidate, in: videos)
@@ -54,15 +58,17 @@ final class RecentVideoStore: ObservableObject {
                 result = RecentVideo(
                     id: existing.id, title: candidate.title, sourceKey: candidate.sourceKey,
                     contentFingerprint: candidate.contentFingerprint,
-                    contentDigest: candidate.contentDigest, fileRevision: candidate.fileRevision,
+                    contentDigest: candidate.contentDigest ?? existing.contentDigest, fileRevision: candidate.fileRevision,
                     bookmarkData: candidate.bookmarkData, lastPosition: position ?? existing.lastPosition
                 )
             }
+            guard try open(result) else { return result }
             videos.removeAll { $0.sourceKey == candidate.sourceKey || $0.id == matchID }
             videos.insert(result, at: 0)
             videos = Array(videos.prefix(maxItems))
             historyRevision += 1
             save()
+            if result.contentDigest == nil { scheduleDigest(for: result, url: url) }
             return result
         }
     }
@@ -79,22 +85,55 @@ final class RecentVideoStore: ObservableObject {
             }
         }
 
-        let bookmarkData = try Self.bookmarkData(for: url)
-        let title = url.lastPathComponent
-        let sourceKey = Self.sourceKey(for: url)
-        let contentFingerprint = try? Self.contentFingerprint(for: url)
-
-        let revision = fileRevision(for: url)
-        let cached = history.first {
-            $0.sourceKey == sourceKey && revision != nil && $0.fileRevision == revision
-                && contentFingerprint != nil && $0.contentFingerprint == contentFingerprint
+        for _ in 0..<2 {
+            let file = try FileHandle(forReadingFrom: url)
+            defer { try? file.close() }
+            guard let revision = fileRevision(of: file), fileRevision(for: url) == revision else { continue }
+            let bookmark = try bookmarkData(for: url)
+            let path = sourceKey(for: url)
+            let (sample, size) = try sampledContent(of: file)
+            let cached = history.first {
+                $0.fileRevision == revision && $0.contentFingerprint == sample
+            }
+            // A large first open needs only the sample. Verify matching candidates
+            // before reusing history, and fill in the digest after opening otherwise.
+            let smallFile = size <= 128 * 1024
+            let needsDigest = smallFile || history.contains {
+                ($0.contentFingerprint == sample || ($0.contentFingerprint == nil && $0.sourceKey == path))
+                    && $0.contentDigest != nil
+            }
+            let digest = try cached?.contentDigest ?? (needsDigest ? fullContentDigest(of: file) : nil)
+            guard revision == fileRevision(of: file), revision == fileRevision(for: url) else { continue }
+            return RecentVideo(title: url.lastPathComponent, sourceKey: path, contentFingerprint: sample,
+                               contentDigest: digest, fileRevision: revision, bookmarkData: bookmark,
+                               lastPosition: position ?? 0)
         }
-        let digest = try cached?.contentDigest ?? fullContentDigest(for: url)
-        return RecentVideo(
-            title: title, sourceKey: sourceKey, contentFingerprint: contentFingerprint,
-            contentDigest: digest, fileRevision: revision,
-            bookmarkData: bookmarkData, lastPosition: position ?? 0
-        )
+        throw CocoaError(.fileReadUnknown)
+    }
+
+    private func scheduleDigest(for video: RecentVideo, url: URL) {
+        guard let revision = video.fileRevision, pendingDigests.insert(revision).inserted else { return }
+        Task(priority: .utility) { [weak self] in
+            let digest = await Self.verifiedDigest(at: url, revision: revision)
+            guard let self else { return }
+            self.pendingDigests.remove(revision)
+            guard let digest,
+                  let index = self.videos.firstIndex(where: { $0.fileRevision == revision }),
+                  self.videos[index].contentDigest == nil else { return }
+            self.videos[index].contentDigest = digest
+            self.save()
+        }
+    }
+
+    private nonisolated static func verifiedDigest(at url: URL, revision: String) async -> String? {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        guard fileRevision(for: url) == revision else { return nil }
+        guard let file = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? file.close() }
+        guard fileRevision(of: file) == revision else { return nil }
+        let digest = try? fullContentDigest(of: file)
+        return fileRevision(of: file) == revision && fileRevision(for: url) == revision ? digest : nil
     }
 
     func updatePosition(for videoID: RecentVideo.ID, position: TimeInterval) {
@@ -164,12 +203,8 @@ final class RecentVideoStore: ObservableObject {
         url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
-    private nonisolated static func contentFingerprint(for url: URL) throws -> String {
+    private nonisolated static func sampledContent(of file: FileHandle) throws -> (fingerprint: String, size: UInt64) {
         let fingerprintChunkSize = 64 * 1024
-        let file = try FileHandle(forReadingFrom: url)
-        defer {
-            try? file.close()
-        }
 
         let fileSize = try file.seekToEnd()
         try file.seek(toOffset: 0)
@@ -193,7 +228,7 @@ final class RecentVideoStore: ObservableObject {
             .map { String(format: "%02x", $0) }
             .joined()
 
-        return "sampled-sha256:\(fileSize):\(digest)"
+        return ("sampled-sha256:\(fileSize):\(digest)", fileSize)
     }
 
     // The inode and its status-change time also change on replacement or a timestamp-preserving edit.
@@ -204,12 +239,21 @@ final class RecentVideoStore: ObservableObject {
             return fstatat(AT_FDCWD, path, &info, 0)
         }
         guard status == 0 else { return nil }
-        return "\(info.st_dev):\(info.st_ino):\(info.st_ctimespec.tv_sec):\(info.st_ctimespec.tv_nsec)"
+        return revisionString(info)
     }
 
-    private nonisolated static func fullContentDigest(for url: URL) throws -> String {
-        let file = try FileHandle(forReadingFrom: url)
-        defer { try? file.close() }
+    private nonisolated static func fileRevision(of file: FileHandle) -> String? {
+        var info = stat()
+        guard fstat(file.fileDescriptor, &info) == 0 else { return nil }
+        return revisionString(info)
+    }
+
+    private nonisolated static func revisionString(_ info: stat) -> String {
+        "\(info.st_dev):\(info.st_ino):\(info.st_ctimespec.tv_sec):\(info.st_ctimespec.tv_nsec)"
+    }
+
+    private nonisolated static func fullContentDigest(of file: FileHandle) throws -> String {
+        try file.seek(toOffset: 0)
         var hash = SHA256()
         while let chunk = try file.read(upToCount: 1024 * 1024), !chunk.isEmpty {
             try Task.checkCancellation()
@@ -229,11 +273,15 @@ final class RecentVideoStore: ObservableObject {
             }
         }
 
-        guard FileManager.default.fileExists(atPath: url.path) else { return video }
+        guard let file = try? FileHandle(forReadingFrom: url) else { return video }
+        defer { try? file.close() }
+        guard let revision = fileRevision(of: file),
+              let sample = try? sampledContent(of: file), fileRevision(for: url) == revision else { return video }
 
         var migrated = video
         migrated.sourceKey = Self.sourceKey(for: url)
-        migrated.contentFingerprint = try? Self.contentFingerprint(for: url)
+        migrated.contentFingerprint = sample.fingerprint
+        migrated.fileRevision = revision
         return migrated
     }
 
@@ -241,13 +289,14 @@ final class RecentVideoStore: ObservableObject {
         if let lhs = first.contentDigest, let rhs = second.contentDigest {
             return lhs == rhs
         }
-        // Older history entries only have a sampled fingerprint.
-        if first.sourceKey == second.sourceKey {
-            return first.contentFingerprint == nil || second.contentFingerprint == nil
-                || first.contentFingerprint == second.contentFingerprint
+        guard let fingerprint = first.contentFingerprint, fingerprint == second.contentFingerprint else { return false }
+        if let revision = first.fileRevision, revision == second.fileRevision { return true }
+        // Small legacy samples covered every byte. Larger samples alone cannot
+        // establish that the middle of a historical file has stayed the same.
+        if let size = UInt64(fingerprint.split(separator: ":").dropFirst().first ?? ""), size <= 128 * 1024 {
+            return true
         }
-        // The sampled hash only narrows candidates. Two different edits can share both ends.
-        guard let fingerprint = first.contentFingerprint, fingerprint == second.contentFingerprint,
+        guard let leftRevision = first.fileRevision, let rightRevision = second.fileRevision,
               let lhs = try? resolvedBookmarkedURL(for: first),
               let rhs = try? resolvedBookmarkedURL(for: second) else { return false }
         let accessedLeft = lhs.startAccessingSecurityScopedResource()
@@ -256,7 +305,9 @@ final class RecentVideoStore: ObservableObject {
             if accessedLeft { lhs.stopAccessingSecurityScopedResource() }
             if accessedRight { rhs.stopAccessingSecurityScopedResource() }
         }
+        guard fileRevision(for: lhs) == leftRevision, fileRevision(for: rhs) == rightRevision else { return false }
         return FileManager.default.contentsEqual(atPath: lhs.path, andPath: rhs.path)
+            && fileRevision(for: lhs) == leftRevision && fileRevision(for: rhs) == rightRevision
     }
 
     private nonisolated static func deduplicated(_ videos: [RecentVideo], maxItems: Int) -> [RecentVideo] {
@@ -279,10 +330,8 @@ final class RecentVideoStore: ObservableObject {
         let loadedVideos = (try? JSONDecoder().decode([RecentVideo].self, from: data)) ?? []
         videos = loadedVideos
         guard !loadedVideos.isEmpty else { return }
-        let limit = maxItems
         migration = Task.detached {
-            let migrated = loadedVideos.map(Self.migratedVideo)
-            return Self.deduplicated(migrated, maxItems: limit)
+            loadedVideos.map(Self.migratedVideo)
         }
         Task { await finishMigration() }
     }
@@ -290,19 +339,24 @@ final class RecentVideoStore: ObservableObject {
     func finishMigration() async {
         guard let pending = migration else { return }
         let migrated = await pending.value
-        guard migration != nil else { return }
-        migration = nil
-        // Preserve removals and position updates made while old bookmarks were being read.
-        let current = Dictionary(videos.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let merged = migrated.compactMap { entry -> RecentVideo? in
-            guard var video = current[entry.id] else { return nil }
-            video.contentFingerprint = entry.contentFingerprint
-            video.sourceKey = entry.sourceKey
-            return video
-        }
-        if videos != merged {
-            videos = merged
-            save()
+        while migration != nil {
+            let revision = historyRevision
+            let remainingIDs = Set(videos.map(\.id))
+            let limit = maxItems
+            let survivors = await Task.detached {
+                Self.deduplicated(migrated.filter { remainingIDs.contains($0.id) }, maxItems: limit)
+            }.value
+            guard migration != nil else { return }
+            guard revision == historyRevision else { continue }
+            migration = nil
+            // Keep original identity evidence: sampling the file today cannot
+            // prove which version the user watched before this launch.
+            let current = Dictionary(videos.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            let merged = survivors.compactMap { current[$0.id] }
+            if videos != merged {
+                videos = merged
+                save()
+            }
         }
     }
 

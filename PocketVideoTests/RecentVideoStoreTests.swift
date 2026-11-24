@@ -253,7 +253,79 @@ final class RecentVideoStoreTests: XCTestCase {
         await store.finishMigration()
         XCTAssertEqual(store.videos.count, 1)
         XCTAssertEqual(store.videos[0].title, "first.mp4")
-        XCTAssertNotNil(store.videos[0].contentFingerprint)
+        XCTAssertEqual(store.videos[0].lastPosition, 30)
+    }
+
+    func testUnopenedRequestDoesNotEvictHistory() async throws {
+        let store = RecentVideoStore(userDefaults: userDefaults, maxItems: 1)
+        let original = try await store.addOrUpdate(url: makeVideoFile(named: "first.mp4"))
+        _ = try await store.addOrUpdate(url: makeVideoFile(named: "other.mp4", contents: "other")) { _ in false }
+        XCTAssertEqual(store.videos, [original])
+    }
+
+    func testFirstLargeOpenDoesNotWaitForFullDigest() async throws {
+        let url = temporaryDirectory.appendingPathComponent("large.mp4")
+        try Data(repeating: 1, count: 512 * 1024).write(to: url)
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let entry = try await store.addOrUpdate(url: url)
+        XCTAssertNil(entry.contentDigest)
+        for _ in 0..<100 where store.videos.first?.contentDigest == nil {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertNotNil(store.videos.first?.contentDigest)
+    }
+
+    func testDeletionDuringMigrationPreservesOtherDuplicate() async throws {
+        let firstURL = try makeVideoFile(named: "first.mp4")
+        let copyURL = try makeVideoFile(named: "copy.mp4")
+        let entries = try [firstURL, copyURL].map {
+            RecentVideo(title: $0.lastPathComponent, sourceKey: $0.path,
+                        bookmarkData: try bookmarkData(for: $0), lastPosition: 15)
+        }
+        userDefaults.set(try JSONEncoder().encode(entries), forKey: "recentVideos")
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        store.remove(entries[0])
+        await store.finishMigration()
+        XCTAssertEqual(store.videos, [entries[1]])
+    }
+
+    func testReusedLegacyPathWithoutIdentityDoesNotTransferPosition() async throws {
+        let url = try makeVideoFile(named: "legacy.mp4")
+        let old = RecentVideo(title: "legacy.mp4", sourceKey: url.path,
+                              bookmarkData: try bookmarkData(for: url), lastPosition: 20)
+        userDefaults.set(try JSONEncoder().encode([old]), forKey: "recentVideos")
+        try Data("replacement".utf8).write(to: url)
+        let store = RecentVideoStore(userDefaults: userDefaults)
+        let opened = try await store.addOrUpdate(url: url)
+        XCTAssertNotEqual(opened.id, old.id)
+        XCTAssertEqual(opened.lastPosition, 0)
+    }
+
+    func testLegacySamplePreservesProvenContentOnly() async throws {
+        for size in [32, 192 * 1024] {
+            let url = temporaryDirectory.appendingPathComponent("legacy-\(size).mp4")
+            var data = Data(repeating: 0, count: size)
+            try data.write(to: url)
+            let firstStore = RecentVideoStore(userDefaults: userDefaults)
+            let saved = try await firstStore.addOrUpdate(url: url, position: 15)
+            var legacy = saved
+            legacy.contentDigest = nil
+            legacy.fileRevision = nil
+            userDefaults.set(try JSONEncoder().encode([legacy]), forKey: "recentVideos")
+            if size > 128 * 1024 {
+                data[size / 2] = 1
+                try data.write(to: url)
+            }
+            let store = RecentVideoStore(userDefaults: userDefaults)
+            let reopened = try await store.addOrUpdate(url: url)
+            if size == 32 {
+                XCTAssertEqual(reopened.id, saved.id)
+                XCTAssertEqual(reopened.lastPosition, 15)
+            } else {
+                XCTAssertNotEqual(reopened.id, saved.id)
+                XCTAssertEqual(reopened.lastPosition, 0)
+            }
+        }
     }
 
     private func makeVideoFile(named name: String, contents: String = "test") throws -> URL {

@@ -10,7 +10,9 @@ private actor PlaybackAudioSession {
     func activate() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
+            try Task.checkCancellation()
             try session.setCategory(.playback, mode: .moviePlayback)
+            try Task.checkCancellation()
             try session.setActive(true)
             return true
         } catch {
@@ -296,7 +298,6 @@ final class PlayerViewModel: ObservableObject {
 
         hasVideo = true
         didFinishPlayback = false
-        claimSystemPlaybackControls()
         addPeriodicTimeObserver()
         finishLoading()
 
@@ -304,20 +305,24 @@ final class PlayerViewModel: ObservableObject {
         let duration = item.duration.seconds
         if resumePosition.isFinite, resumePosition > 0, !duration.isFinite || resumePosition < duration {
             let time = CMTime(seconds: resumePosition, preferredTimescale: 600)
-            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
                 Task { @MainActor in
-                    guard let self, self.hasVideo, self.player.currentItem === item else { return }
-                    self.canSaveCurrentPosition = true
+                    guard finished, let self, self.hasVideo, self.player.currentItem === item else { return }
                     let seconds = self.player.currentTime().seconds
-                    self.currentPlaybackPosition = seconds.isFinite ? seconds : resumePosition
-                    self.startAutomaticPlaybackIfReady()
+                    self.finishInitialSeek(at: seconds.isFinite ? seconds : resumePosition)
                 }
             }
         } else {
-            currentPlaybackPosition = 0
-            canSaveCurrentPosition = true
-            startAutomaticPlaybackIfReady()
+            finishInitialSeek(at: 0)
         }
+    }
+
+    private func finishInitialSeek(at position: TimeInterval) {
+        currentPlaybackPosition = position
+        lastSavedPosition = position
+        canSaveCurrentPosition = true
+        claimSystemPlaybackControls()
+        startAutomaticPlaybackIfReady()
     }
 
     private func handlePlayerItemFailure() {
@@ -325,6 +330,7 @@ final class PlayerViewModel: ObservableObject {
         removePeriodicTimeObserver()
         player.pause()
         player.replaceCurrentItem(with: nil)
+        stopSecurityScopedAccess()
         isPlaying = false
         hasVideo = false
         currentPlaybackPosition = 0
@@ -372,14 +378,23 @@ final class PlayerViewModel: ObservableObject {
         owner.updateNowPlayingInfo()
     }
 
+    private var remoteInstallationID: UUID?
+
+    private func ownsRemoteCommands(_ id: UUID) -> Bool {
+        remoteInstallationID == id && Self.systemPlaybackOwner === self
+    }
+
     private func installRemoteCommandTargets() {
+        let installationID = UUID()
+        remoteInstallationID = installationID
         let commandCenter = MPRemoteCommandCenter.shared()
         commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: 10)]
         commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: 10)]
 
         let playTarget = commandCenter.playCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                await self?.resumePlayback()
+                guard let self, self.ownsRemoteCommands(installationID) else { return }
+                await self.resumePlayback(remoteInstallation: installationID)
             }
             return .success
         }
@@ -387,7 +402,8 @@ final class PlayerViewModel: ObservableObject {
 
         let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                self?.pausePlayback()
+                guard let self, self.ownsRemoteCommands(installationID) else { return }
+                self.pausePlayback()
             }
             return .success
         }
@@ -395,9 +411,9 @@ final class PlayerViewModel: ObservableObject {
 
         let togglePlayPauseTarget = commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.ownsRemoteCommands(installationID) else { return }
                 if self.player.rate == 0 {
-                    await self.resumePlayback()
+                    await self.resumePlayback(remoteInstallation: installationID)
                 } else {
                     self.pausePlayback()
                 }
@@ -410,7 +426,8 @@ final class PlayerViewModel: ObservableObject {
             guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
 
             Task { @MainActor in
-                await self?.skip(by: event.interval)
+                guard let self, self.ownsRemoteCommands(installationID) else { return }
+                await self.skip(by: event.interval, remoteInstallation: installationID)
             }
             return .success
         }
@@ -420,7 +437,8 @@ final class PlayerViewModel: ObservableObject {
             guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
 
             Task { @MainActor in
-                await self?.skip(by: -event.interval)
+                guard let self, self.ownsRemoteCommands(installationID) else { return }
+                await self.skip(by: -event.interval, remoteInstallation: installationID)
             }
             return .success
         }
@@ -439,6 +457,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func removeRemoteCommandTargets() {
+        remoteInstallationID = nil
         remoteCommandTargets.forEach { target in
             target.command.removeTarget(target.target)
         }
@@ -473,7 +492,7 @@ final class PlayerViewModel: ObservableObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
-    func skip(by interval: TimeInterval) async {
+    func skip(by interval: TimeInterval, remoteInstallation: UUID? = nil) async {
         guard let item = player.currentItem else { return }
         let currentSeconds = player.currentTime().seconds
         guard currentSeconds.isFinite else { return }
@@ -484,6 +503,10 @@ final class PlayerViewModel: ObservableObject {
 
         let finished = await player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
         guard finished, player.currentItem === item else { return }
+        if let remoteInstallation, !ownsRemoteCommands(remoteInstallation) { return }
+        if !canSaveCurrentPosition {
+            finishInitialSeek(at: currentPlaybackPosition)
+        }
         if duration.isFinite && targetSeconds == duration {
             markPlaybackCompleted()
         } else {
@@ -573,10 +596,12 @@ final class PlayerViewModel: ObservableObject {
             let activated = await PlaybackAudioSession.shared.activate()
             guard !Task.isCancelled, let self, self.player.currentItem === item else { return }
             self.automaticPlaybackTask = nil
-            if self.audioInterruptionState.currentID != nil {
-                guard activated else { return }
-                self.audioInterruptionState.currentID = nil
+            guard activated else {
+                self.wantsAutomaticPlayback = false
+                self.showAlert(.audioSessionUnavailable)
+                return
             }
+            self.audioInterruptionState.currentID = nil
             self.wantsAutomaticPlayback = false
             self.didFinishPlayback = false
             self.player.play()
@@ -598,13 +623,14 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    func resumePlayback() async {
+    func resumePlayback(remoteInstallation: UUID? = nil) async {
         guard let item = player.currentItem else { return }
         if didFinishPlayback && isAtPlaybackEnd(player.currentTime().seconds) {
             let revision = playbackStopRevision
             let finished = await player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
             guard finished, player.currentItem === item, playbackStopRevision == revision else { return }
         }
+        if let remoteInstallation, !ownsRemoteCommands(remoteInstallation) { return }
         didFinishPlayback = false
         player.play()
         updateNowPlayingInfo()
@@ -656,6 +682,7 @@ final class PlayerViewModel: ObservableObject {
             playbackStopRevision += 1
             audioInterruptionState.currentID = UUID()
             wantsAutomaticPlayback = wantsAutomaticPlayback || player.timeControlStatus == .playing
+                || player.timeControlStatus == .waitingToPlayAtSpecifiedRate
             automaticPlaybackTask?.cancel()
             automaticPlaybackTask = nil
             player.pause()
@@ -723,8 +750,9 @@ final class PlayerViewModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor in
-                guard let self, notification.object as? AVPlayerItem === self.player.currentItem else { return }
+            MainActor.assumeIsolated {
+                guard let self, notification.object as? AVPlayerItem === self.player.currentItem,
+                      self.isAtPlaybackEnd(self.player.currentTime().seconds) else { return }
                 self.markPlaybackCompleted()
             }
         }

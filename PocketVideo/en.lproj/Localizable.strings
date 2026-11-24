@@ -59,3 +59,5 @@
 "最新版を取得できませんでした" = "Couldn’t Download the Latest Version";
 "この端末に保存されている以前のバージョンを再生できます。" = "You can play the older version saved on this device.";
 "端末にあるバージョンを再生" = "Play Local Version";
+"音声を開始できませんでした" = "Audio could not start";
+"もう一度再生してください。" = "Try playing the video again.";
