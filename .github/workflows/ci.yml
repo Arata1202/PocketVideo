@@ -26,8 +26,20 @@ jobs:
         run: xcodegen generate
       - name: Build and test
         run: |
+          destinations=$(xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -showdestinations)
+          simulator_id=$(awk -F 'id:' '/Ineligible destinations/ { exit }
+            /platform:iOS Simulator,/ && /name:iPhone/ {
+              split($2, fields, ",")
+              if (!first) first = fields[1]
+              if (/OS:18.5,/ && /name:iPhone 16 Pro *}/) preferred = fields[1]
+            }
+            END { print preferred ? preferred : first }' <<< "$destinations")
+          if [[ -z "$simulator_id" ]]; then
+            echo "No eligible iPhone simulator found" >&2
+            exit 1
+          fi
           xcodebuild test \
             -project PocketVideo.xcodeproj \
             -scheme PocketVideo \
-            -destination "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.5" \
+            -destination "id=$simulator_id" \
             CODE_SIGNING_ALLOWED=NO
