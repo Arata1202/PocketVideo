@@ -2,9 +2,6 @@
 DerivedData/
 *.xcodeproj/
 *.xcworkspace/
-*.xcworkspace/xcuserdata/
-*.xcodeproj/xcuserdata/
-*.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcuserstate
 
 # XcodeGen

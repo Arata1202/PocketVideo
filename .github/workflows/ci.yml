@@ -17,13 +17,26 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 20
     env:
+      XCODEGEN_VERSION: 2.48.0
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: Restore XcodeGen
+        id: xcodegen
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/xcodegen
+          key: xcodegen-${{ runner.os }}-${{ runner.arch }}-${{ env.XCODEGEN_VERSION }}
       - name: Install XcodeGen
-        run: brew install xcodegen
+        if: steps.xcodegen.outputs.cache-hit != 'true'
+        run: |
+          cd "$RUNNER_TEMP"
+          curl --fail --location --silent --show-error --retry 3 \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip" -o xcodegen.zip
+          echo "620c9f0dc10849f94728ab5df52d225ebab8187439dd6fee1925e59e80dff892  xcodegen.zip" | shasum -a 256 -c -
+          unzip -q xcodegen.zip
       - name: Generate project
-        run: xcodegen generate
+        run: '"$RUNNER_TEMP/xcodegen/bin/xcodegen" generate'
       - name: Build and test
         run: |
           destinations=$(xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -showdestinations)
