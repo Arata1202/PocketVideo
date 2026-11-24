@@ -39,20 +39,34 @@ jobs:
         run: '"$RUNNER_TEMP/xcodegen/bin/xcodegen" generate'
       - name: Build and test
         run: |
-          destinations=$(xcodebuild -project PocketVideo.xcodeproj -scheme PocketVideo -showdestinations)
-          simulator_id=$(awk -F 'id:' '/Ineligible destinations/ { exit }
-            /platform:iOS Simulator,/ && /name:iPhone/ {
-              split($2, fields, ",")
-              if (!first) first = fields[1]
-              if (/OS:18.5,/ && /name:iPhone 16 Pro *}/) preferred = fields[1]
-            }
-            END { print preferred ? preferred : first }' <<< "$destinations")
+          set -o pipefail
+          candidates=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          candidates = []
+          for runtime, devices in json.load(sys.stdin)["devices"].items():
+              if ".iOS-" not in runtime:
+                  continue
+              version = tuple(map(int, runtime.split(".iOS-")[1].split("-")[:2]))
+              for device in devices:
+                  if version >= (17,) and device["deviceTypeIdentifier"].split(".")[-1].startswith("iPhone-"):
+                      preferred = version == (18, 5) and device["name"] == "iPhone 16 Pro"
+                      candidates.append((preferred, device["state"] == "Booted", version, device["udid"]))
+          if not candidates:
+              sys.exit("No available iPhone simulator running iOS 17 or later")
+          for candidate in sorted(candidates, reverse=True):
+              print(candidate[-1])
+          ')
+          scheme=(-project PocketVideo.xcodeproj -scheme PocketVideo)
+          simulator_id=""
+          for id in $candidates; do
+            if xcodebuild "${scheme[@]}" -destination "id=$id" -destination-timeout 5 -showBuildSettings >/dev/null; then
+              simulator_id=$id
+              break
+            fi
+          done
           if [[ -z "$simulator_id" ]]; then
-            echo "No eligible iPhone simulator found" >&2
+            echo "PocketVideo has no eligible iPhone simulator" >&2
             exit 1
           fi
-          xcodebuild test \
-            -project PocketVideo.xcodeproj \
-            -scheme PocketVideo \
-            -destination "id=$simulator_id" \
+          xcodebuild test "${scheme[@]}" -destination "id=$simulator_id" \
             CODE_SIGNING_ALLOWED=NO
