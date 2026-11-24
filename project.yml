@@ -6,8 +6,8 @@ options:
     iOS: "17.0"
 settings:
   base:
-    MARKETING_VERSION: 1.2.2
-    CURRENT_PROJECT_VERSION: 3
+    MARKETING_VERSION: 1.2.3
+    CURRENT_PROJECT_VERSION: 1
     DEVELOPMENT_TEAM: 6DQ3D32B73
 targets:
   PocketVideo:
